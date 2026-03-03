@@ -1,0 +1,163 @@
+import React, { useState, useEffect } from 'react';
+import { useNavigate } from 'react-router-dom';
+
+export default function Repaso() {
+  const navigate = useNavigate();
+  
+  const [flashcards, setFlashcards] = useState([]);
+  const [cargando, setCargando] = useState(true);
+  const [indiceActual, setIndiceActual] = useState(0);
+  const [estadoRespuesta, setEstadoRespuesta] = useState(null);
+  const [opcionSeleccionada, setOpcionSeleccionada] = useState(null);
+
+  // Cargamos los fallos pendientes al entrar
+  useEffect(() => {
+    fetch('http://127.0.0.1:8000/api/repaso/pendientes?alumno_id=1')
+      .then(res => res.json())
+      .then(datos => {
+        setFlashcards(datos);
+        setCargando(false);
+      })
+      .catch(error => {
+        console.error("Error al cargar repasos:", error);
+        setCargando(false);
+      });
+  }, []);
+
+  const comprobarRespuesta = async (opcionElegida) => {
+    if (estadoRespuesta) return;
+    
+    setOpcionSeleccionada(opcionElegida);
+    const cartaActual = flashcards[indiceActual];
+    const esCorrecta = opcionElegida === cartaActual.respuestaCorrecta;
+    
+    setEstadoRespuesta(esCorrecta ? 'correcta' : 'incorrecta');
+
+    // Si acierta, avisamos a FastAPI para que borre este fallo de su lista negra
+    if (esCorrecta) {
+      try {
+        await fetch('http://127.0.0.1:8000/api/repaso/completar', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ fallo_id: cartaActual.fallo_id })
+        });
+      } catch (error) {
+        console.error("Error al marcar como completado:", error);
+      }
+    }
+  };
+
+  const siguienteCarta = () => {
+    setEstadoRespuesta(null);
+    setOpcionSeleccionada(null);
+    setIndiceActual(prev => prev + 1);
+  };
+
+  if (cargando) {
+    return (
+      <div className="min-h-screen bg-gray-50 flex items-center justify-center font-sans">
+        <div className="text-orange-500 font-medium animate-pulse">Buscando tus puntos débiles...</div>
+      </div>
+    );
+  }
+
+  // Si no hay fallos pendientes, mostramos un mensaje de victoria
+  if (flashcards.length === 0) {
+    return (
+      <div className="min-h-screen bg-gray-50 flex flex-col items-center justify-center p-6 font-sans">
+        <div className="max-w-md w-full bg-white rounded-3xl p-8 shadow-sm text-center border border-gray-100">
+          <div className="text-6xl mb-4">🏆</div>
+          <h2 className="text-2xl font-bold text-gray-800 mb-2">¡Mazo limpio!</h2>
+          <p className="text-gray-500 mb-8">No tienes ninguna pregunta pendiente de repaso. Estás al día con tus errores.</p>
+          <button 
+            onClick={() => navigate('/')}
+            className="w-full py-4 bg-orange-500 text-white rounded-2xl font-semibold hover:bg-orange-600 transition-colors"
+          >
+            Volver a la Academia
+          </button>
+        </div>
+      </div>
+    );
+  }
+
+  // Pantalla de fin de repaso
+  if (indiceActual >= flashcards.length) {
+    return (
+      <div className="min-h-screen bg-gray-50 flex flex-col items-center justify-center p-6 font-sans">
+        <div className="max-w-md w-full bg-white rounded-3xl p-8 shadow-sm text-center border border-gray-100">
+          <div className="text-6xl mb-4">🧠</div>
+          <h2 className="text-2xl font-bold text-gray-800 mb-2">Sesión de repaso terminada</h2>
+          <p className="text-gray-500 mb-8">Has revisado {flashcards.length} conceptos clave. ¡La constancia es la clave del aprobado!</p>
+          <button 
+            onClick={() => navigate('/')}
+            className="w-full py-4 bg-gray-900 text-white rounded-2xl font-semibold hover:bg-gray-800 transition-colors"
+          >
+            Volver al Dashboard
+          </button>
+        </div>
+      </div>
+    );
+  }
+
+  const cartaActual = flashcards[indiceActual];
+
+  return (
+    <div className="min-h-screen bg-gray-50 flex flex-col items-center py-12 px-4 font-sans relative">
+      <div className="w-full max-w-3xl flex justify-between items-center mb-8">
+        <button onClick={() => navigate('/')} className="text-gray-400 hover:text-gray-600 transition-colors font-medium">✕ Salir del Repaso</button>
+        <div className="text-sm font-medium text-orange-600 bg-orange-50 px-4 py-1.5 rounded-full border border-orange-100">
+          Flashcard {indiceActual + 1} de {flashcards.length}
+        </div>
+      </div>
+
+      <div className="w-full max-w-3xl bg-white rounded-3xl shadow-sm border border-gray-100 p-8 md:p-12">
+        <div className="mb-4 text-sm font-bold text-orange-500 tracking-wide uppercase">Repaso Activo</div>
+        <h2 className="text-2xl md:text-3xl font-medium text-gray-800 mb-8 leading-snug">{cartaActual.pregunta}</h2>
+
+        <div className="flex flex-col gap-3 mb-8">
+          {cartaActual.opciones.map((opcion, index) => {
+            let estilosOpcion = "border-gray-200 hover:border-orange-500 hover:bg-orange-50 text-gray-700 cursor-pointer";
+            
+            if (estadoRespuesta) {
+              if (opcion === cartaActual.respuestaCorrecta) estilosOpcion = "border-green-500 bg-green-50 text-green-800 font-medium";
+              else if (opcion === opcionSeleccionada && estadoRespuesta === 'incorrecta') estilosOpcion = "border-red-400 bg-red-50 text-red-700";
+              else estilosOpcion = "border-gray-100 text-gray-400 opacity-60 cursor-default";
+            }
+
+            return (
+              <button 
+                key={index} 
+                onClick={() => comprobarRespuesta(opcion)} 
+                disabled={estadoRespuesta !== null}
+                className={`w-full text-left p-4 rounded-xl border-2 transition-all duration-200 ${estilosOpcion}`}
+              >
+                {opcion}
+              </button>
+            );
+          })}
+        </div>
+
+        {/* Zona de Feedback Explicativo */}
+        {estadoRespuesta && (
+          <div className="animate-fade-in flex flex-col gap-4">
+            <div className={`p-6 rounded-2xl border ${estadoRespuesta === 'correcta' ? 'bg-green-50 border-green-200' : 'bg-orange-50 border-orange-200'}`}>
+              <h4 className={`font-bold mb-2 ${estadoRespuesta === 'correcta' ? 'text-green-800' : 'text-orange-800'}`}>
+                {estadoRespuesta === 'correcta' ? '¡Bien hecho! Superado.' : 'Aún hay que afianzarlo.'}
+              </h4>
+              <p className="text-gray-700 leading-relaxed text-sm">
+                <span className="font-semibold">Explicación: </span> 
+                {cartaActual.explicacion}
+              </p>
+            </div>
+            
+            <div className="flex justify-end mt-4">
+              <button onClick={siguienteCarta} className="px-8 py-4 bg-gray-900 hover:bg-black text-white rounded-xl font-bold transition-colors cursor-pointer w-full md:w-auto">
+                {indiceActual + 1 === flashcards.length ? 'Terminar Repaso' : 'Siguiente Flashcard ➔'}
+              </button>
+            </div>
+          </div>
+        )}
+      </div>
+    </div>
+  );
+}
