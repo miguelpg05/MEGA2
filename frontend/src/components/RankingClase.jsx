@@ -6,7 +6,7 @@ export default function RankingClase() {
   useEffect(() => {
     // Le añadimos la hora actual a la ruta para que el navegador 
     // crea que es una dirección nueva y NUNCA use la caché
-    fetch(`http://127.0.0.1:8000/api/ranking/clase?t=${Date.now()}`)
+    fetch(`https://backend-academia-kxx5.onrender.com/api/ranking/clase?t=${Date.now()}`)
       .then(res => res.json())
       .then(data => setLideres(data))
       .catch(error => console.error("Error al cargar el ranking:", error));

@@ -7,7 +7,7 @@ export default function IndicadorProgreso({ alumnoId, temaId }) {
     useEffect(() => {
         // Llamamos al endpoint que acabamos de crear en FastAPI
         // (Asegúrate de que el puerto 8000 coincida con tu backend)
-        fetch(`http://localhost:8000/api/progreso/alumno/${alumnoId}/tema/${temaId}`)
+        fetch(`https://backend-academia-kxx5.onrender.com/api/progreso/alumno/${alumnoId}/tema/${temaId}`)
             .then((respuesta) => respuesta.json())
             .then((datos) => {
                 setProgreso(datos);

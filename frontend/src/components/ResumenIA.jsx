@@ -41,7 +41,7 @@ export default function ResumenIA() {
     setResumen(''); // Limpiamos el anterior
     
     try {
-      const response = await fetch('http://127.0.0.1:8000/api/ia/resumir', {
+      const response = await fetch('https://backend-academia-kxx5.onrender.com/api/ia/resumir', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ 

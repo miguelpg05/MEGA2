@@ -13,7 +13,7 @@ export default function Esquema() {
   const [cargando, setCargando] = useState(true);
 
   useEffect(() => {
-    fetch('http://127.0.0.1:8000/api/ia/esquema', {
+    fetch('https://backend-academia-kxx5.onrender.com/api/ia/esquema', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ tema_nombre: temaNombre })

@@ -11,7 +11,7 @@ const TopicProgressCard = ({ topicName, alumnoId, temaId }) => {
   const [cargando, setCargando] = useState(true);
 
   useEffect(() => {
-    fetch(`http://localhost:8000/api/progreso/alumno/${alumnoId}/tema/${temaId}`)
+    fetch(`https://backend-academia-kxx5.onrender.com/api/progreso/alumno/${alumnoId}/tema/${temaId}`)
       .then((respuesta) => respuesta.json())
       .then((datos) => {
         setProgreso(datos);

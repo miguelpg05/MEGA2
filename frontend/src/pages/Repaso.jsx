@@ -12,7 +12,7 @@ export default function Repaso() {
 
   // Cargamos los fallos pendientes al entrar
   useEffect(() => {
-    fetch('http://127.0.0.1:8000/api/repaso/pendientes?alumno_id=1')
+    fetch('https://backend-academia-kxx5.onrender.com/api/repaso/pendientes?alumno_id=1')
       .then(res => res.json())
       .then(datos => {
         setFlashcards(datos);
@@ -36,7 +36,7 @@ export default function Repaso() {
     // Si acierta, avisamos a FastAPI para que borre este fallo de su lista negra
     if (esCorrecta) {
       try {
-        await fetch('http://127.0.0.1:8000/api/repaso/completar', {
+        await fetch('https://backend-academia-kxx5.onrender.com/api/repaso/completar', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ fallo_id: cartaActual.fallo_id })

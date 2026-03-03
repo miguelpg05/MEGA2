@@ -32,7 +32,7 @@ export default function Test() {
 
   useEffect(() => {
     // MODIFICADO: Añadimos el tema_id a la URL para que FastAPI filtre
-    fetch(`http://127.0.0.1:8000/api/test/generar?tema_id=${temaIdActual}`)
+    fetch(`https://backend-academia-kxx5.onrender.com/api/test/generar?tema_id=${temaIdActual}`)
       .then(res => res.json())
       .then(datos => {
         setPreguntasTest(datos);
@@ -55,7 +55,7 @@ export default function Test() {
   const enviarPuntuacion = async (puntosLogrados) => {
     const nombreGuardado = localStorage.getItem('nombreOpositor') || "Anónimo";
     try {
-      await fetch('http://127.0.0.1:8000/api/ranking/guardar', {
+      await fetch('https://backend-academia-kxx5.onrender.com/api/ranking/guardar', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ 
@@ -76,7 +76,7 @@ export default function Test() {
     };
 
     try {
-        const response = await fetch('http://127.0.0.1:8000/api/progreso/guardar-resultados', {
+        const response = await fetch('https://backend-academia-kxx5.onrender.com/api/progreso/guardar-resultados', {
             method: 'POST',
             headers: {
                 'Content-Type': 'application/json'
@@ -119,7 +119,7 @@ export default function Test() {
 
     if (!esCorrecta) {
       try {
-        await fetch('http://127.0.0.1:8000/api/test/fallo', {
+        await fetch('https://backend-academia-kxx5.onrender.com/api/test/fallo', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ pregunta_id: preguntaActual.id })
