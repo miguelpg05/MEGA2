@@ -59,13 +59,22 @@ const TopicProgressCard = ({ topicName, alumnoId, temaId }) => {
         ></div>
       </div>
       
-      {/* Botones de acción modificados (solo queda el esquema visual a todo el ancho) */}
+      {/* --- BOTONES RESTAURADOS --- */}
       <div className="mt-6 flex gap-3">
+        {/* Botón naranja que lleva al banco de tests */}
+        <button 
+          onClick={() => navigate('/listado-tests', { state: { temaId: temaId } })}
+          className="flex-1 py-2 px-4 bg-orange-500 hover:bg-orange-600 text-white font-medium rounded-lg transition-colors cursor-pointer"
+        >
+          Banco de Tests
+        </button>
+        
+        {/* Botón blanco para el esquema visual */}
         <button 
           onClick={() => navigate('/esquema', { state: { temaNombre: topicName } })}
-          className="w-full py-2 px-4 bg-white border border-gray-200 hover:border-orange-500 hover:text-orange-500 text-gray-600 font-medium rounded-lg transition-colors cursor-pointer"
+          className="flex-1 py-2 px-4 bg-white border border-gray-200 hover:border-orange-500 hover:text-orange-500 text-gray-600 font-medium rounded-lg transition-colors cursor-pointer"
         >
-          Ver esquema visual
+          Ver esquema
         </button>
       </div>
     </div>
@@ -112,22 +121,7 @@ export default function Dashboard() {
           {/* COLUMNA PRINCIPAL (IZQUIERDA Y CENTRO) */}
           <div className="lg:col-span-2 space-y-8">
             
-            {/* NUEVA TARJETA: BANCO DE TESTS */}
-            <div className="bg-white p-8 rounded-3xl shadow-sm border border-gray-100 flex flex-col justify-between items-center text-center">
-              <div className="text-6xl mb-4">🏆</div>
-              <div>
-                <h3 className="text-2xl font-bold text-gray-800">Tu Banco de Tests</h3>
-                <p className="text-gray-500 mt-2 mb-6 leading-relaxed">Accede a cientos de tests específicos por tema, evalúa tu rendimiento y compite en el ranking de tu clase.</p>
-              </div>
-              <button 
-                onClick={() => navigate('/listado-tests')}
-                className="w-full md:w-auto px-8 py-3.5 bg-gray-900 hover:bg-black text-white rounded-xl font-bold transition-colors cursor-pointer"
-              >
-                Entrar al listado completo →
-              </button>
-            </div>
-
-            {/* TARJETAS DE PROGRESO POR TEMA */}
+            {/* TARJETAS DE PROGRESO POR TEMA (ID dinámico) */}
             <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
               <TopicProgressCard topicName="Tema 1: La Constitución Española" alumnoId={usuarioId} temaId={1} />
               <TopicProgressCard topicName="Tema 2: El Gobierno y la Administración" alumnoId={usuarioId} temaId={2} />
