@@ -13,7 +13,16 @@ from routers import progreso
 
 # 3. INICIALIZACIÓN DE LA APP
 app = FastAPI(title="API Academia Oposiciones")
-
+# --- AÑADIMOS ESTE BLOQUE NUEVO ---
+# Le decimos al backend que acepte conexiones desde cualquier web
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["*"], # El asterisco significa "dejar pasar a todos"
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
+# ---------------------------------
 # 4. CONFIGURACIÓN DE CORS (Una sola vez)
 origins = [
     "http://localhost:5173",
