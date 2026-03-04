@@ -17,7 +17,10 @@ app = FastAPI(title="API Academia Oposiciones")
 # Le decimos al backend que acepte conexiones desde cualquier web
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"], # El asterisco significa "dejar pasar a todos"
+    allow_origins=[
+        "https://web-mega-flax.vercel.app", # Tu web real en Vercel
+        "http://localhost:5173"             # Tu web local para cuando programes
+    ],
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
