@@ -9,7 +9,7 @@ export default function Auth() {
   const navigate = useNavigate();
 
   // ATENCIÓN: Si vas a subir esto a Vercel, recuerda cambiar esta URL por la de tu Render
-  const BASE_URL = 'https://web-mega-flax.vercel.app/';
+  const BASE_URL = 'https://backend-academia-kxx5.onrender.com';
 
   const handleChange = (e) => {
     setFormData({ ...formData, [e.target.name]: e.target.value });
