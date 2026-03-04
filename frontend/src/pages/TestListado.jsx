@@ -41,8 +41,8 @@ export default function TestListado() {
 
   return (
     <div className="min-h-screen bg-gray-50 p-6 font-sans">
-      {/* 1. Contenedor más estrecho: cambiamos max-w-6xl por max-w-4xl */}
-      <div className="max-w-4xl mx-auto bg-white rounded-3xl p-6 md:p-8 shadow-sm border border-gray-100 overflow-x-auto">
+      {/* AQUÍ ESTÁ EL CAMBIO: max-w-3xl en lugar de max-w-4xl para estrecharlo más */}
+      <div className="max-w-3xl mx-auto bg-white rounded-3xl p-6 md:p-8 shadow-sm border border-gray-100 overflow-x-auto">
         
         <header className="mb-6 flex justify-between items-center">
           <div>
@@ -60,7 +60,7 @@ export default function TestListado() {
         </header>
 
         <table className="w-full text-left border-collapse">
-          {/* Cabecera Naranja con paddings reducidos */}
+          {/* Cabecera Naranja */}
           <thead className="text-white uppercase text-xs font-bold tracking-wider bg-orange-500">
             <tr>
               <th scope="col" className="px-4 py-3 rounded-l-xl text-center">Test</th>
@@ -76,16 +76,14 @@ export default function TestListado() {
                 key={test.test_id} 
                 className={`border-b border-gray-100 ${index % 2 === 0 ? 'bg-[#515254] text-white' : 'bg-white'}`}
               >
-                {/* 2. Textos más pequeños (text-lg en lugar de text-xl) */}
+                {/* Tamaños mantenidos tal y como pediste */}
                 <td className="px-4 py-3 font-bold text-lg text-center">{test.numero_test}</td>
                 
                 <td className="px-4 py-3 flex items-center justify-center gap-3">
-                  {/* 3. Cuadradito de color más pequeño (w-6 h-6) */}
                   <div className={`w-6 h-6 rounded ${obtenerColorIndicador(test.fallos_ultimo)}`}></div>
                   <span className="font-bold text-lg">{test.fallos_ultimo === null ? '-' : test.fallos_ultimo}</span>
                 </td>
                 
-                {/* 4. Textos secundarios más pequeños (text-sm en lugar de text-lg) */}
                 <td className="px-4 py-3 font-medium text-sm text-center">{test.realizado_veces} veces</td>
                 <td className="px-4 py-3 text-sm text-center">{formatearFecha(test.ultimo_fecha)}</td>
                 
