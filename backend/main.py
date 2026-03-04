@@ -28,9 +28,13 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
+# Importamos los routers
+from routers import ia, progreso, auth # <-- Añade 'auth' aquí
 
 # 5. INCLUSIÓN DE RUTAS EXTERNAS
+app.include_router(ia.router)
 app.include_router(progreso.router)
+app.include_router(auth.router) # <-- ¡La puerta de entrada!
 # Si creaste el router 'tests.py' descomenta la siguiente línea:
 # app.include_router(tests.router)
 

@@ -1,19 +1,28 @@
+import os
 from sqlalchemy import create_engine, Column, Integer, String, ForeignKey, Boolean
 from sqlalchemy.orm import declarative_base, relationship, sessionmaker
 
-# Configuramos una base de datos SQLite para desarrollo
-SQLALCHEMY_DATABASE_URL = "sqlite:///./academia.db"
-engine = create_engine(SQLALCHEMY_DATABASE_URL, connect_args={"check_same_thread": False})
+# Pega aquí exactamente tu enlace de Neon.tech
+# IMPORTANTE: Asegúrate de que empieza por "postgresql://" y no solo "postgres://"
+URL_NEON = "postgresql://neondb_owner:npg_I4Umhsfa0iRx@ep-rough-heart-agbtnl6n-pooler.c-2.eu-central-1.aws.neon.tech/neondb?sslmode=require&channel_binding=require"
+
+SQLALCHEMY_DATABASE_URL = os.getenv("DATABASE_URL", URL_NEON)
+
+# Para PostgreSQL eliminamos el 'check_same_thread' que solo era para SQLite
+engine = create_engine(SQLALCHEMY_DATABASE_URL)
 SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
 
 Base = declarative_base()
-# Función para abrir y cerrar la conexión a la base de datos en cada petición
+
+# Función para abrir y cerrar la conexión... (el resto del archivo sigue igual)
 def get_db():
     db = SessionLocal()
     try:
         yield db
     finally:
         db.close()
+
+# ... (Aquí debajo siguen tus clases Tema, Pregunta, etc.) ...
 # 1. Tabla de Temas y Bloques
 class Tema(Base):
     __tablename__ = "temas"
@@ -73,6 +82,14 @@ class RespuestaAlumno(Base):
     pregunta_id = Column(Integer, ForeignKey("preguntas.id"))
     es_correcta = Column(Boolean, default=False)
 
+# 6. NUEVA: Tabla de Usuarios (Para el Login Real)
+class Usuario(Base):
+    __tablename__ = "usuarios"
+
+    id = Column(Integer, primary_key=True, index=True)
+    nombre = Column(String)
+    email = Column(String, unique=True, index=True) # unique=True evita que dos se registren con el mismo email
+    hashed_password = Column(String) # Aquí guardaremos la contraseña ya encriptada (ilegible)
 # MUY IMPORTANTE: Esto siempre debe ir al final, después de definir todas las clases
 # Creamos las tablas en el archivo academia.db al ejecutar
 Base.metadata.create_all(bind=engine)

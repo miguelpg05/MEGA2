@@ -11,3 +11,20 @@ class RespuestaEnvio(BaseModel):
 class TestResultado(BaseModel):
     alumno_id: int
     respuestas: List[RespuestaEnvio]
+
+# --- ESQUEMAS PARA AUTENTICACIÓN ---
+
+class UsuarioRegistro(BaseModel):
+    nombre: str
+    email: str
+    password: str
+
+class UsuarioLogin(BaseModel):
+    email: str
+    password: str
+
+class Token(BaseModel):
+    access_token: str
+    token_type: str
+    usuario_id: int
+    nombre: str
