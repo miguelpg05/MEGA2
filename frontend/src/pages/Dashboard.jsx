@@ -11,6 +11,9 @@ const TopicProgressCard = ({ topicName, alumnoId, temaId }) => {
   const [cargando, setCargando] = useState(true);
 
   useEffect(() => {
+    // Si no hay alumnoId, no intentamos hacer la llamada
+    if (!alumnoId) return;
+
     fetch(`https://backend-academia-kxx5.onrender.com/api/progreso/alumno/${alumnoId}/tema/${temaId}`)
       .then((respuesta) => respuesta.json())
       .then((datos) => {
@@ -63,7 +66,6 @@ const TopicProgressCard = ({ topicName, alumnoId, temaId }) => {
           Hacer test rápido
         </button>
         
-        {/* NUEVO BOTÓN DE ESQUEMA VISUAL */}
         <button 
           onClick={() => navigate('/esquema', { state: { temaNombre: topicName } })}
           className="flex-1 py-2 px-4 bg-white border border-gray-200 hover:border-orange-500 hover:text-orange-500 text-gray-600 font-medium rounded-lg transition-colors cursor-pointer"
@@ -76,71 +78,54 @@ const TopicProgressCard = ({ topicName, alumnoId, temaId }) => {
 };
 
 export default function Dashboard() {
-  const navigate = useNavigate(); // <-- Añadimos el hook de navegación aquí también
-  const nombreGuardado = localStorage.getItem('nombreOpositor');
-  const [nombre, setNombre] = useState(nombreGuardado || '');
+  const navigate = useNavigate();
   
-  const [mostrarModal, setMostrarModal] = useState(!nombreGuardado);
-  const [inputNombre, setInputNombre] = useState('');
+  // 1. Rescatamos los datos reales del login desde la memoria del navegador
+  const nombreUsuario = localStorage.getItem('nombre_usuario') || 'Opositor';
+  const usuarioId = localStorage.getItem('usuario_id'); // ¡El ID real!
 
-  const guardarNombre = () => {
-    if (inputNombre.trim() !== '') {
-      localStorage.setItem('nombreOpositor', inputNombre);
-      setNombre(inputNombre);
-      setMostrarModal(false);
-    }
+  // 2. Función para destruir la pulsera virtual y volver a la pantalla de acceso
+  const cerrarSesion = () => {
+    localStorage.removeItem('token');
+    localStorage.removeItem('usuario_id');
+    localStorage.removeItem('nombre_usuario');
+    navigate('/login');
   };
 
   return (
     <div className="min-h-screen bg-gray-50 p-8 font-sans relative">
-      
-      {mostrarModal && (
-        <div className="fixed inset-0 bg-black/40 backdrop-blur-sm flex justify-center items-center z-50 p-4">
-          <div className="bg-white rounded-3xl p-8 max-w-sm w-full shadow-2xl text-center">
-            <h2 className="text-2xl font-bold text-gray-800 mb-2">¡Bienvenido! 👋</h2>
-            <p className="text-gray-500 text-sm mb-6">¿Con qué nombre vas a arrasar en el ranking?</p>
-            <input 
-              type="text" 
-              placeholder="Tu nombre o alias..."
-              value={inputNombre}
-              onChange={(e) => setInputNombre(e.target.value)}
-              onKeyDown={(e) => e.key === 'Enter' && guardarNombre()}
-              className="w-full p-4 border-2 border-gray-100 rounded-xl mb-4 focus:border-orange-500 focus:outline-none transition-colors"
-              autoFocus
-            />
-            <button 
-              onClick={guardarNombre}
-              className="w-full py-3 bg-orange-500 hover:bg-orange-600 text-white font-bold rounded-xl transition-all cursor-pointer"
-            >
-              Entrar a la academia
-            </button>
-          </div>
-        </div>
-      )}
-
       <div className="max-w-6xl mx-auto">
-        <header className="mb-8">
-          <h1 className="text-3xl font-light text-gray-900">
-            Hola, <span className="font-semibold text-orange-500">{nombre || 'Opositor'}</span>
-          </h1>
-          <p className="text-gray-500 mt-2">¿Qué vamos a estudiar hoy?</p>
+        
+        {/* 3. CABECERA PERSONALIZADA CON BOTÓN DE SALIR */}
+        <header className="mb-8 flex flex-col md:flex-row md:justify-between md:items-center bg-white p-6 rounded-3xl shadow-sm border border-gray-100">
+          <div className="mb-4 md:mb-0">
+            <h1 className="text-3xl font-light text-gray-900">
+              Hola, <span className="font-semibold text-orange-500">{nombreUsuario}</span> 👋
+            </h1>
+            <p className="text-gray-500 mt-2">¿Qué vamos a estudiar hoy?</p>
+          </div>
+          <button 
+            onClick={cerrarSesion}
+            className="text-sm bg-red-50 text-red-600 px-5 py-2.5 rounded-xl font-medium hover:bg-red-100 transition-colors shadow-sm"
+          >
+            Cerrar sesión
+          </button>
         </header>
 
         <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
           
           <div className="lg:col-span-2 space-y-8">
             <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-              <TopicProgressCard topicName="Tema 1: La Constitución Española" alumnoId={1} temaId={1} />
-              <TopicProgressCard topicName="Tema 2: El Gobierno y la Administración" alumnoId={1} temaId={2} />
+              {/* 4. PASAMOS EL ID DEL USUARIO REAL A LAS TARJETAS DE TEMAS */}
+              <TopicProgressCard topicName="Tema 1: La Constitución Española" alumnoId={usuarioId} temaId={1} />
+              <TopicProgressCard topicName="Tema 2: El Gobierno y la Administración" alumnoId={usuarioId} temaId={2} />
             </div>
             <ResumenIA />
           </div>
 
           <div className="lg:col-span-1 space-y-6">
             
-            {/* NUEVA TARJETA: Acceso al Modo Repaso */}
             <div className="bg-gray-900 rounded-3xl p-6 text-white shadow-xl relative overflow-hidden">
-              {/* Círculo decorativo de fondo */}
               <div className="absolute -right-8 -top-8 w-32 h-32 bg-orange-500/20 rounded-full blur-2xl"></div>
               
               <div className="relative z-10">
