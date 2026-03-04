@@ -5,10 +5,10 @@ export default function Test() {
   const navigate = useNavigate();
   const location = useLocation(); 
   
-  // Capturamos el ID del tema desde el Dashboard. Si entran directo, usamos el 1.
+  // Capturamos el ID del tema y el ID específico del test desde el Banco de Tests
   const temaIdActual = location.state?.temaId || 1;
+  const testPlantillaId = location.state?.testPlantillaId; // <-- NUEVO: ID del test (ej. el test nº 12)
 
-  // --- NUEVO: Rescatamos los datos del usuario real ---
   const usuarioId = localStorage.getItem('usuario_id');
   const nombreUsuario = localStorage.getItem('nombre_usuario') || "Opositor";
 
@@ -54,18 +54,38 @@ export default function Test() {
     return () => clearInterval(temporizador);
   }, [tiempoRestante, cargando, testFinalizado, preguntasTest]);
 
+  // --- NUEVA FUNCIÓN: Guarda el intento en el historial de la tabla ---
+  const enviarIntentoBancoTests = async (fallosTotales) => {
+    // Si entró directo sin pasar por el listado, no hay ID de plantilla, así que no guardamos este dato.
+    if (!testPlantillaId) return; 
+
+    try {
+      await fetch('https://backend-academia-kxx5.onrender.com/api/test/registrar-intento', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ 
+          alumno_id: parseInt(usuarioId),
+          test_plantilla_id: testPlantillaId,
+          fallos: fallosTotales
+        })
+      });
+      console.log("✅ Intento registrado en el Banco de Tests");
+    } catch (error) {
+      console.error("Error al guardar intento en la tabla:", error);
+    }
+  };
+
   const enviarPuntuacion = async (puntosLogrados) => {
     try {
       await fetch('https://backend-academia-kxx5.onrender.com/api/ranking/guardar', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ 
-          // --- NUEVO: Usamos el nombre real del usuario ---
           nombre: nombreUsuario,
           puntos: puntosLogrados 
         })
       });
-      console.log("Puntuación enviada al ranking");
+      console.log("✅ Puntuación enviada al ranking");
     } catch (error) {
       console.error("Error al guardar puntos:", error);
     }
@@ -73,7 +93,6 @@ export default function Test() {
 
   const enviarResultadosAlBackend = async () => {
     const payload = {
-        // --- NUEVO: Enviamos el ID real del usuario, no el 1 ---
         alumno_id: parseInt(usuarioId), 
         respuestas: historialRespuestas
     };
@@ -81,14 +100,12 @@ export default function Test() {
     try {
         const response = await fetch('https://backend-academia-kxx5.onrender.com/api/progreso/guardar-resultados', {
             method: 'POST',
-            headers: {
-                'Content-Type': 'application/json'
-            },
+            headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify(payload)
         });
 
         if (response.ok) {
-            console.log("✅ Resultados guardados, ¡las barras de progreso se han actualizado!");
+            console.log("✅ Barras de progreso actualizadas");
         }
     } catch (error) {
         console.error("❌ Hubo un error al guardar el progreso:", error);
@@ -127,7 +144,6 @@ export default function Test() {
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ 
             pregunta_id: preguntaActual.id,
-            // --- NUEVO: Vinculamos el fallo al usuario real ---
             alumno_id: parseInt(usuarioId) 
           })
         });
@@ -170,6 +186,9 @@ export default function Test() {
   if (testFinalizado) {
     const porcentajeAciertos = Math.round((aciertos / preguntasTest.length) * 100);
     const superado = porcentajeAciertos >= 80;
+    
+    // Calculamos los fallos totales del test
+    const fallosTotales = preguntasTest.length - aciertos;
 
     return (
       <div className="min-h-screen bg-gray-50 flex items-center justify-center p-6 font-sans">
@@ -181,7 +200,7 @@ export default function Test() {
           
           <div className="my-8">
             <div className="text-5xl font-black text-orange-500 mb-2">{porcentajeAciertos}%</div>
-            <p className="text-gray-500">Tu nivel en este tema</p>
+            <p className="text-gray-500">Tu nivel en este test</p>
           </div>
 
           <div className="bg-gray-50 rounded-2xl p-4 mb-8">
@@ -198,13 +217,16 @@ export default function Test() {
 
           <button 
             onClick={async () => {
-              await enviarResultadosAlBackend(); 
-              await enviarPuntuacion(aciertos);  
-              navigate('/');                     
+              // --- EL GRAN FINAL: Disparamos las tres actualizaciones a la vez ---
+              await enviarIntentoBancoTests(fallosTotales); // 1. Actualiza la tabla
+              await enviarResultadosAlBackend();            // 2. Actualiza la barra del tema
+              await enviarPuntuacion(aciertos);             // 3. Actualiza el ranking
+              
+              navigate('/listado-tests', { state: { temaId: temaIdActual } }); // Volvemos al listado
             }}
             className="w-full py-4 bg-gray-900 text-white rounded-2xl font-semibold hover:bg-gray-800 transition-colors cursor-pointer"
           >
-            Finalizar y puntuar
+            Finalizar y guardar nota
           </button>
         </div>
       </div>
@@ -216,7 +238,7 @@ export default function Test() {
   return (
     <div className="min-h-screen bg-gray-50 flex flex-col items-center py-12 px-4 font-sans relative">
       <div className="w-full max-w-3xl flex justify-between items-center mb-8">
-        <button onClick={() => navigate('/')} className="text-gray-400 hover:text-gray-600 transition-colors cursor-pointer font-medium">✕ Salir</button>
+        <button onClick={() => navigate('/listado-tests', { state: { temaId: temaIdActual } })} className="text-gray-400 hover:text-gray-600 transition-colors cursor-pointer font-medium">✕ Salir</button>
         <div className="flex gap-4">
           <div className={`text-sm font-medium px-4 py-1.5 rounded-full shadow-sm border transition-colors ${tiempoRestante < 30 ? 'bg-red-50 text-red-600 border-red-200 animate-pulse' : 'bg-white text-gray-600 border-gray-200'}`}>
             ⏱ {formatearTiempo(tiempoRestante)}

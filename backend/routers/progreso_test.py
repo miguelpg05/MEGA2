@@ -2,10 +2,18 @@ from fastapi import APIRouter, Depends
 from sqlalchemy.orm import Session
 from sqlalchemy import desc
 from typing import Optional
+from pydantic import BaseModel
+from datetime import datetime
 
 from models import SessionLocal, TestPlantilla, TestIntento
 
 router = APIRouter(prefix="/api/test", tags=["Progreso de Tests"])
+
+# Esquema para recibir los datos desde React
+class IntentoRequest(BaseModel):
+    alumno_id: int
+    test_plantilla_id: int
+    fallos: int
 
 def get_db():
     db = SessionLocal()
@@ -16,7 +24,6 @@ def get_db():
 
 @router.get("/listado-progreso")
 def obtener_listado_tests_con_progreso(alumno_id: int, tema_id: Optional[int] = None, db: Session = Depends(get_db)):
-    # 1. Filtramos por tema si nos lo piden desde React
     query_tests = db.query(TestPlantilla)
     if tema_id:
         query_tests = query_tests.filter(TestPlantilla.tema_id == tema_id)
@@ -25,7 +32,6 @@ def obtener_listado_tests_con_progreso(alumno_id: int, tema_id: Optional[int] = 
     
     listado_final = []
     for test in tests:
-        # 2. Buscamos los intentos de ESTE alumno para ESTE test
         query_intentos = db.query(TestIntento).filter(
             TestIntento.alumno_id == alumno_id,
             TestIntento.test_plantilla_id == test.id
@@ -43,3 +49,16 @@ def obtener_listado_tests_con_progreso(alumno_id: int, tema_id: Optional[int] = 
         })
         
     return listado_final
+
+# --- NUEVA RUTA: PARA GUARDAR EL INTENTO AL TERMINAR EL TEST ---
+@router.post("/registrar-intento")
+def registrar_intento_test(datos: IntentoRequest, db: Session = Depends(get_db)):
+    nuevo_intento = TestIntento(
+        alumno_id=datos.alumno_id,
+        test_plantilla_id=datos.test_plantilla_id,
+        fallos_ultimo=datos.fallos,
+        fecha_intento=datetime.utcnow()
+    )
+    db.add(nuevo_intento)
+    db.commit()
+    return {"mensaje": "Intento registrado correctamente en el historial"}
