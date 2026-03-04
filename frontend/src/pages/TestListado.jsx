@@ -5,7 +5,6 @@ export default function TestListado() {
   const navigate = useNavigate();
   const location = useLocation();
   
-  // 1. Rescatamos qué tema ha pulsado el usuario y su ID real
   const temaIdSeleccionado = location.state?.temaId || 1;
   const usuarioId = localStorage.getItem('usuario_id');
 
@@ -13,7 +12,6 @@ export default function TestListado() {
   const [cargando, setCargando] = useState(true);
 
   useEffect(() => {
-    // 2. Pedimos a FastAPI solo los tests de este tema y de este usuario
     fetch(`https://backend-academia-kxx5.onrender.com/api/test/listado-progreso?alumno_id=${usuarioId}&tema_id=${temaIdSeleccionado}`)
       .then(res => res.json())
       .then(datos => {
@@ -27,9 +25,9 @@ export default function TestListado() {
   }, [usuarioId, temaIdSeleccionado]);
 
   const obtenerColorIndicador = (fallos) => {
-    if (fallos === null) return "bg-gray-100"; // Nunca realizado
-    if (fallos <= 2) return "bg-[#bef264]"; // Aprobado
-    return "bg-[#f87171]"; // Suspendido
+    if (fallos === null) return "bg-gray-100"; 
+    if (fallos <= 2) return "bg-[#bef264]"; 
+    return "bg-[#f87171]"; 
   };
 
   const formatearFecha = (fechaRaw) => {
@@ -42,32 +40,34 @@ export default function TestListado() {
   }
 
   return (
-    <div className="min-h-screen bg-gray-50 p-6 md:p-8 font-sans">
-      <div className="max-w-6xl mx-auto bg-white rounded-3xl p-6 md:p-8 shadow-sm border border-gray-100 overflow-x-auto">
+    <div className="min-h-screen bg-gray-50 p-6 font-sans">
+      {/* 1. Contenedor más estrecho: cambiamos max-w-6xl por max-w-4xl */}
+      <div className="max-w-4xl mx-auto bg-white rounded-3xl p-6 md:p-8 shadow-sm border border-gray-100 overflow-x-auto">
         
-        <header className="mb-8 flex justify-between items-center">
+        <header className="mb-6 flex justify-between items-center">
           <div>
-            <h1 className="text-3xl font-bold text-gray-800">
+            <h1 className="text-2xl font-bold text-gray-800">
               Banco de Tests {temaIdSeleccionado === 1 ? '(Tema 1)' : '(Tema 2)'}
             </h1>
-            <p className="text-gray-500 mt-1">Tests de 10 preguntas. Controla tu progreso.</p>
+            <p className="text-gray-500 text-sm mt-1">Tests de 10 preguntas. Controla tu progreso.</p>
           </div>
           <button 
             onClick={() => navigate('/')}
-            className="text-sm bg-gray-100 text-gray-600 px-5 py-2.5 rounded-xl hover:bg-gray-200 transition-colors cursor-pointer"
+            className="text-sm bg-gray-100 text-gray-600 px-4 py-2 rounded-xl hover:bg-gray-200 transition-colors cursor-pointer"
           >
-            ← Volver al Dashboard
+            ← Volver
           </button>
         </header>
 
-        <table className="w-full text-sm text-left border-collapse">
+        <table className="w-full text-left border-collapse">
+          {/* Cabecera Naranja con paddings reducidos */}
           <thead className="text-white uppercase text-xs font-bold tracking-wider bg-orange-500">
             <tr>
-              <th scope="col" className="px-6 py-4 rounded-l-2xl text-center">Test</th>
-              <th scope="col" className="px-6 py-4 text-center">Fallos</th>
-              <th scope="col" className="px-6 py-4 text-center">Realizado</th>
-              <th scope="col" className="px-6 py-4 text-center">Último</th>
-              <th scope="col" className="px-6 py-4 rounded-r-2xl"></th>
+              <th scope="col" className="px-4 py-3 rounded-l-xl text-center">Test</th>
+              <th scope="col" className="px-4 py-3 text-center">Fallos</th>
+              <th scope="col" className="px-4 py-3 text-center">Realizado</th>
+              <th scope="col" className="px-4 py-3 text-center">Último</th>
+              <th scope="col" className="px-4 py-3 rounded-r-xl"></th>
             </tr>
           </thead>
           <tbody>
@@ -76,21 +76,23 @@ export default function TestListado() {
                 key={test.test_id} 
                 className={`border-b border-gray-100 ${index % 2 === 0 ? 'bg-[#515254] text-white' : 'bg-white'}`}
               >
-                <td className="px-6 py-4 font-bold text-xl text-center">{test.numero_test}</td>
+                {/* 2. Textos más pequeños (text-lg en lugar de text-xl) */}
+                <td className="px-4 py-3 font-bold text-lg text-center">{test.numero_test}</td>
                 
-                <td className="px-6 py-4 flex items-center justify-center gap-4">
-                  <div className={`w-8 h-8 rounded ${obtenerColorIndicador(test.fallos_ultimo)}`}></div>
-                  <span className="font-bold text-xl">{test.fallos_ultimo === null ? '-' : test.fallos_ultimo}</span>
+                <td className="px-4 py-3 flex items-center justify-center gap-3">
+                  {/* 3. Cuadradito de color más pequeño (w-6 h-6) */}
+                  <div className={`w-6 h-6 rounded ${obtenerColorIndicador(test.fallos_ultimo)}`}></div>
+                  <span className="font-bold text-lg">{test.fallos_ultimo === null ? '-' : test.fallos_ultimo}</span>
                 </td>
                 
-                <td className="px-6 py-4 font-medium text-lg text-center">{test.realizado_veces} veces</td>
-                <td className="px-6 py-4 text-lg text-center">{formatearFecha(test.ultimo_fecha)}</td>
+                {/* 4. Textos secundarios más pequeños (text-sm en lugar de text-lg) */}
+                <td className="px-4 py-3 font-medium text-sm text-center">{test.realizado_veces} veces</td>
+                <td className="px-4 py-3 text-sm text-center">{formatearFecha(test.ultimo_fecha)}</td>
                 
-                <td className="px-6 py-4 text-center">
-                  {/* 3. El botón flecha ahora redirige al test */}
+                <td className="px-4 py-3 text-center">
                   <button 
                     onClick={() => navigate('/test', { state: { temaId: temaIdSeleccionado, testPlantillaId: test.test_id } })}
-                    className="text-3xl font-bold cursor-pointer hover:text-orange-500 transition-colors"
+                    className="text-2xl font-bold cursor-pointer hover:text-orange-500 transition-colors"
                   >
                     ›
                   </button>
