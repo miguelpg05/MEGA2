@@ -1,13 +1,16 @@
 import React, { useState, useEffect } from 'react';
-// Añadimos useLocation
 import { useNavigate, useLocation } from 'react-router-dom';
 
 export default function Test() {
   const navigate = useNavigate();
-  const location = useLocation(); // Iniciamos useLocation
+  const location = useLocation(); 
   
   // Capturamos el ID del tema desde el Dashboard. Si entran directo, usamos el 1.
   const temaIdActual = location.state?.temaId || 1;
+
+  // --- NUEVO: Rescatamos los datos del usuario real ---
+  const usuarioId = localStorage.getItem('usuario_id');
+  const nombreUsuario = localStorage.getItem('nombre_usuario') || "Opositor";
 
   // Estados de datos y carga
   const [preguntasTest, setPreguntasTest] = useState([]);
@@ -23,7 +26,7 @@ export default function Test() {
   const [aciertos, setAciertos] = useState(0);
   const [testFinalizado, setTestFinalizado] = useState(false);
 
-  // NUEVO ESTADO: Para ir acumulando las respuestas que luego enviaremos a la barra de progreso
+  // Estado para ir acumulando las respuestas que luego enviaremos a la barra de progreso
   const [historialRespuestas, setHistorialRespuestas] = useState([]);
 
   // Estados de Flashcard
@@ -31,7 +34,6 @@ export default function Test() {
   const [flashcardVolteada, setFlashcardVolteada] = useState(false);
 
   useEffect(() => {
-    // MODIFICADO: Añadimos el tema_id a la URL para que FastAPI filtre
     fetch(`https://backend-academia-kxx5.onrender.com/api/test/generar?tema_id=${temaIdActual}`)
       .then(res => res.json())
       .then(datos => {
@@ -42,7 +44,7 @@ export default function Test() {
         console.error("Error al cargar las preguntas:", error);
         setCargando(false);
       });
-  }, [temaIdActual]); // Añadimos temaIdActual como dependencia
+  }, [temaIdActual]); 
 
   useEffect(() => {
     if (tiempoRestante <= 0 || cargando || testFinalizado || preguntasTest.length === 0) return;
@@ -53,13 +55,13 @@ export default function Test() {
   }, [tiempoRestante, cargando, testFinalizado, preguntasTest]);
 
   const enviarPuntuacion = async (puntosLogrados) => {
-    const nombreGuardado = localStorage.getItem('nombreOpositor') || "Anónimo";
     try {
       await fetch('https://backend-academia-kxx5.onrender.com/api/ranking/guardar', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ 
-          nombre: nombreGuardado,
+          // --- NUEVO: Usamos el nombre real del usuario ---
+          nombre: nombreUsuario,
           puntos: puntosLogrados 
         })
       });
@@ -71,7 +73,8 @@ export default function Test() {
 
   const enviarResultadosAlBackend = async () => {
     const payload = {
-        alumno_id: 1, 
+        // --- NUEVO: Enviamos el ID real del usuario, no el 1 ---
+        alumno_id: parseInt(usuarioId), 
         respuestas: historialRespuestas
     };
 
@@ -122,7 +125,11 @@ export default function Test() {
         await fetch('https://backend-academia-kxx5.onrender.com/api/test/fallo', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ pregunta_id: preguntaActual.id })
+          body: JSON.stringify({ 
+            pregunta_id: preguntaActual.id,
+            // --- NUEVO: Vinculamos el fallo al usuario real ---
+            alumno_id: parseInt(usuarioId) 
+          })
         });
       } catch (error) {
         console.error("Error al registrar fallo:", error);
@@ -150,7 +157,6 @@ export default function Test() {
     );
   }
 
-  // Si no hay preguntas en este tema, mostramos un aviso en lugar de romper el test
   if (preguntasTest.length === 0 && !cargando) {
     return (
       <div className="min-h-screen bg-gray-50 flex flex-col items-center justify-center font-sans gap-4">
@@ -281,11 +287,9 @@ export default function Test() {
               <p className="text-gray-500 text-xs mt-1">Guardada en tu mazo de repaso automático</p>
             </div>
             
-            {/* Contenedor de la tarjeta que gira */}
             <div onClick={() => setFlashcardVolteada(!flashcardVolteada)} className="w-full min-h-48 bg-orange-50 border border-orange-100 rounded-2xl p-6 flex items-center justify-center cursor-pointer transition-all duration-300 hover:shadow-md">
               {!flashcardVolteada ? (
                 
-                // CARA A: La pregunta que ha fallado
                 <div className="text-center">
                   <span className="block text-xs text-orange-400 mb-2 font-medium">Pregunta (Haz clic para girar)</span>
                   <p className="text-lg text-gray-800 font-medium">{preguntaActual.pregunta}</p>
@@ -293,7 +297,6 @@ export default function Test() {
                 
               ) : (
                 
-                // CARA B: La respuesta y la explicación de la base de datos
                 <div className="text-center animate-fade-in w-full">
                   <span className="block text-xs text-orange-400 mb-2 font-medium">Respuesta Clave</span>
                   <p className="text-xl text-orange-600 font-bold mb-3">{preguntaActual.respuestaCorrecta}</p>

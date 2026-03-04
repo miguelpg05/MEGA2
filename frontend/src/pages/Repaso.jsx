@@ -4,15 +4,19 @@ import { useNavigate } from 'react-router-dom';
 export default function Repaso() {
   const navigate = useNavigate();
   
+  // --- NUEVO: Rescatamos el ID del usuario real ---
+  const usuarioId = localStorage.getItem('usuario_id');
+
   const [flashcards, setFlashcards] = useState([]);
   const [cargando, setCargando] = useState(true);
   const [indiceActual, setIndiceActual] = useState(0);
   const [estadoRespuesta, setEstadoRespuesta] = useState(null);
   const [opcionSeleccionada, setOpcionSeleccionada] = useState(null);
 
-  // Cargamos los fallos pendientes al entrar
+  // Cargamos los fallos pendientes de ESTE usuario al entrar
   useEffect(() => {
-    fetch('https://backend-academia-kxx5.onrender.com/api/repaso/pendientes?alumno_id=1')
+    // --- NUEVO: Usamos el usuarioId en la URL ---
+    fetch(`https://backend-academia-kxx5.onrender.com/api/repaso/pendientes?alumno_id=${usuarioId}`)
       .then(res => res.json())
       .then(datos => {
         setFlashcards(datos);
@@ -22,7 +26,7 @@ export default function Repaso() {
         console.error("Error al cargar repasos:", error);
         setCargando(false);
       });
-  }, []);
+  }, [usuarioId]); // Añadimos usuarioId como dependencia por seguridad
 
   const comprobarRespuesta = async (opcionElegida) => {
     if (estadoRespuesta) return;
@@ -71,7 +75,7 @@ export default function Repaso() {
           <p className="text-gray-500 mb-8">No tienes ninguna pregunta pendiente de repaso. Estás al día con tus errores.</p>
           <button 
             onClick={() => navigate('/')}
-            className="w-full py-4 bg-orange-500 text-white rounded-2xl font-semibold hover:bg-orange-600 transition-colors"
+            className="w-full py-4 bg-orange-500 text-white rounded-2xl font-semibold hover:bg-orange-600 transition-colors cursor-pointer"
           >
             Volver a la Academia
           </button>
@@ -90,7 +94,7 @@ export default function Repaso() {
           <p className="text-gray-500 mb-8">Has revisado {flashcards.length} conceptos clave. ¡La constancia es la clave del aprobado!</p>
           <button 
             onClick={() => navigate('/')}
-            className="w-full py-4 bg-gray-900 text-white rounded-2xl font-semibold hover:bg-gray-800 transition-colors"
+            className="w-full py-4 bg-gray-900 text-white rounded-2xl font-semibold hover:bg-gray-800 transition-colors cursor-pointer"
           >
             Volver al Dashboard
           </button>
@@ -104,7 +108,7 @@ export default function Repaso() {
   return (
     <div className="min-h-screen bg-gray-50 flex flex-col items-center py-12 px-4 font-sans relative">
       <div className="w-full max-w-3xl flex justify-between items-center mb-8">
-        <button onClick={() => navigate('/')} className="text-gray-400 hover:text-gray-600 transition-colors font-medium">✕ Salir del Repaso</button>
+        <button onClick={() => navigate('/')} className="text-gray-400 hover:text-gray-600 transition-colors cursor-pointer font-medium">✕ Salir del Repaso</button>
         <div className="text-sm font-medium text-orange-600 bg-orange-50 px-4 py-1.5 rounded-full border border-orange-100">
           Flashcard {indiceActual + 1} de {flashcards.length}
         </div>
