@@ -61,7 +61,7 @@ export default function TestListado() {
         </header>
 
         <table className="w-full text-sm text-left border-collapse">
-          <thead className="text-white uppercase text-xs font-bold tracking-wider bg-[#3081ba]">
+          <thead className="text-white uppercase text-xs font-bold tracking-wider bg-orange-500">
             <tr>
               <th scope="col" className="px-6 py-4 rounded-l-2xl text-center">Test</th>
               <th scope="col" className="px-6 py-4 text-center">Fallos</th>
