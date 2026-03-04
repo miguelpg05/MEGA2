@@ -1,7 +1,8 @@
 import os
 from sqlalchemy import create_engine, Column, Integer, String, ForeignKey, Boolean
 from sqlalchemy.orm import declarative_base, relationship, sessionmaker
-
+from sqlalchemy import Column, Integer, String, Boolean, ForeignKey, DateTime
+from datetime import datetime
 # Pega aquí exactamente tu enlace de Neon.tech
 # IMPORTANTE: Asegúrate de que empieza por "postgresql://" y no solo "postgres://"
 URL_NEON = "postgresql://neondb_owner:npg_I4Umhsfa0iRx@ep-rough-heart-agbtnl6n-pooler.c-2.eu-central-1.aws.neon.tech/neondb?sslmode=require&channel_binding=require"
@@ -92,4 +93,25 @@ class Usuario(Base):
     hashed_password = Column(String) # Aquí guardaremos la contraseña ya encriptada (ilegible)
 # MUY IMPORTANTE: Esto siempre debe ir al final, después de definir todas las clases
 # Creamos las tablas en el archivo academia.db al ejecutar
+# --- NUEVAS TABLAS PARA EL LISTADO DE TESTS ESPECÍFICOS ---
+
+# 1. Definimos las plantillas de los tests que existen
+class TestPlantilla(Base):
+    __tablename__ = "test_plantillas"
+
+    id = Column(Integer, primary_key=True, index=True)
+    numero_test = Column(String, unique=True, index=True) # Ej: "001", "002"
+    tema_id = Column(Integer) # A qué tema pertenece
+    total_preguntas = Column(Integer, default=10) # Cuántas preguntas tiene este test
+
+# 2. Guardamos cada intento real que hace un alumno
+class TestIntento(Base):
+    __tablename__ = "test_intentos"
+
+    id = Column(Integer, primary_key=True, index=True)
+    alumno_id = Column(Integer, index=True) # Quién lo hizo
+    test_plantilla_id = Column(Integer, index=True) # Qué test hizo
+    fecha_intento = Column(DateTime, default=datetime.utcnow) # Cuándo lo hizo
+    fallos_ultimo = Column(Integer) # Cuántos fallos tuvo en ESTE intento
+
 Base.metadata.create_all(bind=engine)

@@ -8,6 +8,7 @@ import PanelAlumno from './pages/PanelAlumno';
 import Repaso from './pages/Repaso'; 
 import Esquema from './pages/Esquema';
 import Auth from './pages/Auth';
+import TestListado from './pages/TestListado';
 
 // 1. CREAMOS EL VIGILANTE DE SEGURIDAD
 // Esta función comprueba si existe una "pulsera" (token) guardada. 
@@ -35,6 +36,9 @@ export default function App() {
         <Route path="/panel" element={<RutaProtegida><PanelAlumno /></RutaProtegida>} />
         <Route path="/repaso" element={<RutaProtegida><Repaso /></RutaProtegida>} />
         <Route path="/esquema" element={<RutaProtegida><Esquema /></RutaProtegida>} /> 
+        
+        {/* NUEVA RUTA PARA EL LISTADO DE TESTS */}
+        <Route path="/listado-tests" element={<RutaProtegida><TestListado /></RutaProtegida>} /> 
       </Routes>
     </BrowserRouter>
   );

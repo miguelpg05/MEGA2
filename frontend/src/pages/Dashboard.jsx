@@ -58,17 +58,12 @@ const TopicProgressCard = ({ topicName, alumnoId, temaId }) => {
           style={{ width: progressWidth }}
         ></div>
       </div>
+      
+      {/* Botones de acción modificados (solo queda el esquema visual a todo el ancho) */}
       <div className="mt-6 flex gap-3">
         <button 
-          onClick={() => navigate('/test', { state: { temaId: temaId } })}
-          className="flex-1 py-2 px-4 bg-orange-500 hover:bg-orange-600 text-white font-medium rounded-lg transition-colors cursor-pointer"
-        >
-          Hacer test rápido
-        </button>
-        
-        <button 
           onClick={() => navigate('/esquema', { state: { temaNombre: topicName } })}
-          className="flex-1 py-2 px-4 bg-white border border-gray-200 hover:border-orange-500 hover:text-orange-500 text-gray-600 font-medium rounded-lg transition-colors cursor-pointer"
+          className="w-full py-2 px-4 bg-white border border-gray-200 hover:border-orange-500 hover:text-orange-500 text-gray-600 font-medium rounded-lg transition-colors cursor-pointer"
         >
           Ver esquema visual
         </button>
@@ -80,11 +75,11 @@ const TopicProgressCard = ({ topicName, alumnoId, temaId }) => {
 export default function Dashboard() {
   const navigate = useNavigate();
   
-  // 1. Rescatamos los datos reales del login desde la memoria del navegador
+  // Rescatamos los datos reales del login desde la memoria del navegador
   const nombreUsuario = localStorage.getItem('nombre_usuario') || 'Opositor';
-  const usuarioId = localStorage.getItem('usuario_id'); // ¡El ID real!
+  const usuarioId = localStorage.getItem('usuario_id');
 
-  // 2. Función para destruir la pulsera virtual y volver a la pantalla de acceso
+  // Función para destruir la pulsera virtual y volver a la pantalla de acceso
   const cerrarSesion = () => {
     localStorage.removeItem('token');
     localStorage.removeItem('usuario_id');
@@ -96,7 +91,7 @@ export default function Dashboard() {
     <div className="min-h-screen bg-gray-50 p-8 font-sans relative">
       <div className="max-w-6xl mx-auto">
         
-        {/* 3. CABECERA PERSONALIZADA CON BOTÓN DE SALIR */}
+        {/* CABECERA PERSONALIZADA CON BOTÓN DE SALIR */}
         <header className="mb-8 flex flex-col md:flex-row md:justify-between md:items-center bg-white p-6 rounded-3xl shadow-sm border border-gray-100">
           <div className="mb-4 md:mb-0">
             <h1 className="text-3xl font-light text-gray-900">
@@ -106,7 +101,7 @@ export default function Dashboard() {
           </div>
           <button 
             onClick={cerrarSesion}
-            className="text-sm bg-red-50 text-red-600 px-5 py-2.5 rounded-xl font-medium hover:bg-red-100 transition-colors shadow-sm"
+            className="text-sm bg-red-50 text-red-600 px-5 py-2.5 rounded-xl font-medium hover:bg-red-100 transition-colors shadow-sm cursor-pointer"
           >
             Cerrar sesión
           </button>
@@ -114,15 +109,34 @@ export default function Dashboard() {
 
         <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
           
+          {/* COLUMNA PRINCIPAL (IZQUIERDA Y CENTRO) */}
           <div className="lg:col-span-2 space-y-8">
+            
+            {/* NUEVA TARJETA: BANCO DE TESTS */}
+            <div className="bg-white p-8 rounded-3xl shadow-sm border border-gray-100 flex flex-col justify-between items-center text-center">
+              <div className="text-6xl mb-4">🏆</div>
+              <div>
+                <h3 className="text-2xl font-bold text-gray-800">Tu Banco de Tests</h3>
+                <p className="text-gray-500 mt-2 mb-6 leading-relaxed">Accede a cientos de tests específicos por tema, evalúa tu rendimiento y compite en el ranking de tu clase.</p>
+              </div>
+              <button 
+                onClick={() => navigate('/listado-tests')}
+                className="w-full md:w-auto px-8 py-3.5 bg-gray-900 hover:bg-black text-white rounded-xl font-bold transition-colors cursor-pointer"
+              >
+                Entrar al listado completo →
+              </button>
+            </div>
+
+            {/* TARJETAS DE PROGRESO POR TEMA */}
             <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-              {/* 4. PASAMOS EL ID DEL USUARIO REAL A LAS TARJETAS DE TEMAS */}
               <TopicProgressCard topicName="Tema 1: La Constitución Española" alumnoId={usuarioId} temaId={1} />
               <TopicProgressCard topicName="Tema 2: El Gobierno y la Administración" alumnoId={usuarioId} temaId={2} />
             </div>
+            
             <ResumenIA />
           </div>
 
+          {/* COLUMNA LATERAL (DERECHA) */}
           <div className="lg:col-span-1 space-y-6">
             
             <div className="bg-gray-900 rounded-3xl p-6 text-white shadow-xl relative overflow-hidden">
