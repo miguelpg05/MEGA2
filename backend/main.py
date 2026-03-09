@@ -261,14 +261,28 @@ def completar_repaso(datos: RepasoCompletado, db: Session = Depends(get_db)):
 def generar_esquema_ia(datos: EsquemaRequest):
     client = genai.Client(api_key="AIzaSyBIxgqxYJCANFKdltP7w3uS8FfcxInCBcY")
     prompt = f"""
-    Actúa como un experto en visualización de datos y profesor de oposiciones.
-    Crea un diagrama de MAPA MENTAL (mindmap) usando exclusivamente la sintaxis de Mermaid.js sobre el tema: "{datos.tema_nombre}".
-    
-    REGLAS:
-    1. Empieza el código con la palabra clave 'mindmap'.
-    2. Usa una estructura jerárquica clara con nodos principales y secundarios.
-    3. Sé conciso en los textos de los nodos para que el diagrama sea limpio.
-    4. NO añadas explicaciones adicionales ni texto fuera del bloque de código de Mermaid. Solo el código.
+    Actúa como un experto en diseño instruccional y síntesis pedagógica para oposiciones.
+    Tu objetivo es transformar el tema "{datos.tema_nombre}" en un mapa mental de Mermaid.js que facilite la memoria visual.
+
+    REGLAS ESTRUCTURALES:
+    1. Usa exclusivamente la sintaxis `mindmap`.
+    2. Jerarquía Estricta: 
+    - Raíz: Usa la forma de bordes dobles `((Nombre del Tema))`
+    - Nivel 1 (Bloques principales): Usa la forma redondeada `(Concepto)`
+    - Nivel 2 (Detalles): Usa la forma de nubes `)Detalle(` o rectángulos `[Detalle]`
+    3. Regla de Oro: Máximo 3 palabras por nodo. Si es más largo, sintetiza.
+    4. Densidad: No generes más de 5 ramas principales para evitar el desorden visual.
+    5. Iconografía: Incluye un emoji relevante al principio de cada nodo de Nivel 1 para mejorar la asociación mental.
+
+    CONFIGURACIÓN VISUAL:
+    - Empieza el bloque con: 
+    ---
+    config:
+    look: handDrawn
+    theme: neutral
+    ---
+    mindmap
+    (( {datos.tema_nombre} ))
     """
     try:
         response = client.models.generate_content(
