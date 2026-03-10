@@ -1,12 +1,13 @@
 from fastapi import APIRouter, Depends
 from sqlalchemy.orm import Session
-from sqlalchemy import desc
+from sqlalchemy import desc, func # <-- AÑADIDO: 'func' para poder hacer order_by(func.random())
 from typing import Optional
 from pydantic import BaseModel
 from datetime import datetime
-from collections import defaultdict # <-- IMPORTANTE: Herramienta para ordenar muy rápido
+from collections import defaultdict
 
-from models import SessionLocal, TestPlantilla, TestIntento
+# <-- AÑADIDO: Importamos el modelo 'Pregunta'
+from models import SessionLocal, TestPlantilla, TestIntento, Pregunta 
 
 router = APIRouter(prefix="/api/test", tags=["Progreso de Tests"])
 
@@ -22,6 +23,47 @@ def get_db():
     finally:
         db.close()
 
+# --- NUEVA RUTA: GENERADOR DE TESTS ÚNICOS ---
+@router.get("/generar")
+def generar_test_aleatorio(tema_id: int, db: Session = Depends(get_db)):
+    """
+    Busca todas las preguntas del tema indicado, las desordena al azar 
+    y devuelve exactamente 10 para crear un test único cada vez.
+    """
+    # 1. Sacamos 10 cartas al azar de la baraja (del tema correspondiente)
+    preguntas_db = db.query(Pregunta)\
+                     .filter(Pregunta.tema_id == tema_id)\
+                     .order_by(func.random())\
+                     .limit(10)\
+                     .all()
+    
+    # 2. Las preparamos para que React las entienda perfectamente
+    test_formateado = []
+    for p in preguntas_db:
+        # Hacemos esto a prueba de bombas según cómo tengas definido tu modelo 'Pregunta'
+        texto_pregunta = p.pregunta if hasattr(p, 'pregunta') else p.enunciado
+        
+        try:
+            # Si tienes los campos opcion_a, opcion_b...
+            letra = p.respuesta_correcta.lower()
+            texto_respuesta = getattr(p, f"opcion_{letra}")
+            opciones_lista = [p.opcion_a, p.opcion_b, p.opcion_c, p.opcion_d]
+        except AttributeError:
+            # Si en cambio tienes un campo 'opciones' tipo JSON/Lista
+            opciones_lista = p.opciones
+            texto_respuesta = p.respuesta_correcta
+
+        test_formateado.append({
+            "id": p.id,
+            "pregunta": texto_pregunta,
+            "opciones": opciones_lista, 
+            "respuestaCorrecta": texto_respuesta, 
+            "explicacion": getattr(p, 'explicacion', "Consulta el temario para más detalle.")
+        })
+        
+    return test_formateado
+
+# --- RUTAS DE PROGRESO Y REGISTRO ---
 @router.get("/listado-progreso")
 def obtener_listado_tests_con_progreso(alumno_id: int, tema_id: Optional[int] = None, db: Session = Depends(get_db)):
     # 1. PRIMER VIAJE: Obtenemos los tests correspondientes
