@@ -25,6 +25,7 @@ def get_db():
 
 # --- NUEVA RUTA: GENERADOR DE TESTS ÚNICOS ---
 # --- NUEVA RUTA: GENERADOR DE TESTS EXACTOS DESDE EXCEL ---
+# --- NUEVA RUTA: GENERADOR DE TESTS EXACTOS DESDE EXCEL ---
 @router.get("/generar")
 def generar_test_exacto(test_plantilla_id: int, db: Session = Depends(get_db)):
     """
@@ -32,20 +33,23 @@ def generar_test_exacto(test_plantilla_id: int, db: Session = Depends(get_db)):
     Las desordena para que el alumno no memorice el orden, pero las preguntas son fijas.
     """
     preguntas_db = db.query(Pregunta)\
-        .filter(Pregunta.test_plantilla_id == test_plantilla_id)\
-        .order_by(func.random())\
-        .all()
+                     .filter(Pregunta.test_plantilla_id == test_plantilla_id)\
+                     .order_by(func.random())\
+                     .all()
     
     test_formateado = []
     for p in preguntas_db:
         texto_pregunta = p.pregunta if hasattr(p, 'pregunta') else p.enunciado
-        try:
-            letra = p.respuesta_correcta.lower()
-            texto_respuesta = getattr(p, f"opcion_{letra}")
-            opciones_lista = [p.opcion_a, p.opcion_b, p.opcion_c, p.opcion_d]
-        except AttributeError:
-            opciones_lista = p.opciones
-            texto_respuesta = p.respuesta_correcta
+        
+        # Limpiamos la respuesta del Excel por si has puesto "A.", " a " o el texto entero
+        letra_limpia = str(p.respuesta_correcta).strip().lower()[0] # Coge solo la primera letra: "b"
+        
+        # Nos aseguramos de que sea a, b, c o d
+        if letra_limpia not in ['a', 'b', 'c', 'd']:
+            letra_limpia = 'a' # Por defecto si hay un error grave en el Excel
+            
+        texto_respuesta = getattr(p, f"opcion_{letra_limpia}")
+        opciones_lista = [p.opcion_a, p.opcion_b, p.opcion_c, p.opcion_d]
 
         test_formateado.append({
             "id": p.id,
@@ -56,7 +60,6 @@ def generar_test_exacto(test_plantilla_id: int, db: Session = Depends(get_db)):
         })
         
     return test_formateado
-
 # --- RUTAS DE PROGRESO Y REGISTRO ---
 @router.get("/listado-progreso")
 def obtener_listado_tests_con_progreso(alumno_id: int, tema_id: Optional[int] = None, db: Session = Depends(get_db)):
