@@ -20,7 +20,6 @@ def inyectar_desde_excel(archivo_excel="preguntas.xlsx"):
     db: Session = SessionLocal()
     
     try:
-        # Añadimos la columna físicamente a PostgreSQL por si no existía
         db.execute(text("ALTER TABLE preguntas ADD COLUMN IF NOT EXISTS test_plantilla_id INTEGER REFERENCES test_plantillas(id) ON DELETE CASCADE;"))
         db.commit()
 
@@ -32,9 +31,12 @@ def inyectar_desde_excel(archivo_excel="preguntas.xlsx"):
         
         for index, fila in df.iterrows():
             t_id = int(fila['tema_id'])
-            n_test = int(fila['numero_test'])
+            
+            # --- SOLUCIÓN AQUÍ ---
+            # Cogemos el número del Excel (ej: 1), nos aseguramos de que sea un entero y lo convertimos a texto con ceros delante (ej: "001")
+            n_test = str(int(fila['numero_test'])).zfill(3)
 
-            # 1. Buscamos si ya existe ese Test en la base de datos. Si no existe, lo creamos.
+            # 1. Buscamos si ya existe ese Test en la base de datos
             plantilla = db.query(TestPlantilla).filter(
                 TestPlantilla.tema_id == t_id,
                 TestPlantilla.numero_test == n_test
@@ -46,7 +48,7 @@ def inyectar_desde_excel(archivo_excel="preguntas.xlsx"):
                 db.commit()
                 db.refresh(plantilla)
 
-            # 2. Guardamos la pregunta y la metemos dentro de ese Test
+            # 2. Guardamos la pregunta
             pregunta = Pregunta(
                 tema_id=t_id,
                 test_plantilla_id=plantilla.id,
