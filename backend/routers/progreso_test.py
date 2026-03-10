@@ -24,32 +24,26 @@ def get_db():
         db.close()
 
 # --- NUEVA RUTA: GENERADOR DE TESTS ÚNICOS ---
+# --- NUEVA RUTA: GENERADOR DE TESTS EXACTOS DESDE EXCEL ---
 @router.get("/generar")
-def generar_test_aleatorio(tema_id: int, db: Session = Depends(get_db)):
+def generar_test_exacto(test_plantilla_id: int, db: Session = Depends(get_db)):
     """
-    Busca todas las preguntas del tema indicado, las desordena al azar 
-    y devuelve exactamente 10 para crear un test único cada vez.
+    Busca SOLAMENTE las preguntas vinculadas a este test específico en el Excel.
+    Las desordena para que el alumno no memorice el orden, pero las preguntas son fijas.
     """
-    # 1. Sacamos 10 cartas al azar de la baraja (del tema correspondiente)
     preguntas_db = db.query(Pregunta)\
-                     .filter(Pregunta.tema_id == tema_id)\
-                     .order_by(func.random())\
-                     .limit(10)\
-                     .all()
+        .filter(Pregunta.test_plantilla_id == test_plantilla_id)\
+        .order_by(func.random())\
+        .all()
     
-    # 2. Las preparamos para que React las entienda perfectamente
     test_formateado = []
     for p in preguntas_db:
-        # Hacemos esto a prueba de bombas según cómo tengas definido tu modelo 'Pregunta'
         texto_pregunta = p.pregunta if hasattr(p, 'pregunta') else p.enunciado
-        
         try:
-            # Si tienes los campos opcion_a, opcion_b...
             letra = p.respuesta_correcta.lower()
             texto_respuesta = getattr(p, f"opcion_{letra}")
             opciones_lista = [p.opcion_a, p.opcion_b, p.opcion_c, p.opcion_d]
         except AttributeError:
-            # Si en cambio tienes un campo 'opciones' tipo JSON/Lista
             opciones_lista = p.opciones
             texto_respuesta = p.respuesta_correcta
 

@@ -7,7 +7,7 @@ export default function Test() {
   
   // Capturamos el ID del tema y el ID específico del test desde el Banco de Tests
   const temaIdActual = location.state?.temaId || 1;
-  const testPlantillaId = location.state?.testPlantillaId; // <-- NUEVO: ID del test (ej. el test nº 12)
+  const testPlantillaId = location.state?.testPlantillaId; // <-- ID del test (ej. el test nº 1)
 
   const usuarioId = localStorage.getItem('usuario_id');
   const nombreUsuario = localStorage.getItem('nombre_usuario') || "Opositor";
@@ -33,8 +33,16 @@ export default function Test() {
   const [mostrarFlashcard, setMostrarFlashcard] = useState(false);
   const [flashcardVolteada, setFlashcardVolteada] = useState(false);
 
+  // --- AQUÍ ESTÁ EL CAMBIO CLAVE ---
   useEffect(() => {
-    fetch(`https://backend-academia-kxx5.onrender.com/api/test/generar?tema_id=${temaIdActual}`)
+    // Si entran directo a la ruta sin seleccionar un test, los devolvemos al inicio
+    if (!testPlantillaId) {
+      navigate('/');
+      return;
+    }
+
+    // Pedimos al backend las preguntas EXACTAS de este test concreto
+    fetch(`https://backend-academia-kxx5.onrender.com/api/test/generar?test_plantilla_id=${testPlantillaId}`)
       .then(res => res.json())
       .then(datos => {
         setPreguntasTest(datos);
@@ -44,7 +52,8 @@ export default function Test() {
         console.error("Error al cargar las preguntas:", error);
         setCargando(false);
       });
-  }, [temaIdActual]); 
+  }, [testPlantillaId, navigate]); 
+  // ----------------------------------
 
   useEffect(() => {
     if (tiempoRestante <= 0 || cargando || testFinalizado || preguntasTest.length === 0) return;
@@ -54,9 +63,7 @@ export default function Test() {
     return () => clearInterval(temporizador);
   }, [tiempoRestante, cargando, testFinalizado, preguntasTest]);
 
-  // --- NUEVA FUNCIÓN: Guarda el intento en el historial de la tabla ---
   const enviarIntentoBancoTests = async (fallosTotales) => {
-    // Si entró directo sin pasar por el listado, no hay ID de plantilla, así que no guardamos este dato.
     if (!testPlantillaId) return; 
 
     try {
@@ -177,8 +184,8 @@ export default function Test() {
     return (
       <div className="min-h-screen bg-gray-50 flex flex-col items-center justify-center font-sans gap-4">
         <div className="text-2xl">🚧</div>
-        <div className="text-gray-600 font-medium">Aún no hay preguntas para este tema.</div>
-        <button onClick={() => navigate('/')} className="px-6 py-2 bg-orange-500 text-white rounded-xl hover:bg-orange-600 transition-colors">Volver</button>
+        <div className="text-gray-600 font-medium">Aún no hay preguntas para este test.</div>
+        <button onClick={() => navigate('/listado-tests', { state: { temaId: temaIdActual } })} className="px-6 py-2 bg-orange-500 text-white rounded-xl hover:bg-orange-600 transition-colors">Volver</button>
       </div>
     );
   }
@@ -187,7 +194,6 @@ export default function Test() {
     const porcentajeAciertos = Math.round((aciertos / preguntasTest.length) * 100);
     const superado = porcentajeAciertos >= 80;
     
-    // Calculamos los fallos totales del test
     const fallosTotales = preguntasTest.length - aciertos;
 
     return (
@@ -217,12 +223,11 @@ export default function Test() {
 
           <button 
             onClick={async () => {
-              // --- EL GRAN FINAL: Disparamos las tres actualizaciones a la vez ---
-              await enviarIntentoBancoTests(fallosTotales); // 1. Actualiza la tabla
-              await enviarResultadosAlBackend();            // 2. Actualiza la barra del tema
-              await enviarPuntuacion(aciertos);             // 3. Actualiza el ranking
+              await enviarIntentoBancoTests(fallosTotales); 
+              await enviarResultadosAlBackend();            
+              await enviarPuntuacion(aciertos);             
               
-              navigate('/listado-tests', { state: { temaId: temaIdActual } }); // Volvemos al listado
+              navigate('/listado-tests', { state: { temaId: temaIdActual } }); 
             }}
             className="w-full py-4 bg-gray-900 text-white rounded-2xl font-semibold hover:bg-gray-800 transition-colors cursor-pointer"
           >

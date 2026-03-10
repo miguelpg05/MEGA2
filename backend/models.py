@@ -54,6 +54,7 @@ class Pregunta(Base):
     
     # Relación con el tema al que pertenece
     tema_id = Column(Integer, ForeignKey("temas.id"))
+    test_plantilla_id = Column(Integer, ForeignKey("test_plantillas.id", ondelete="CASCADE"), nullable=True)
     tema = relationship("Tema", back_populates="preguntas")
 
 # 3. Tabla de Fallos (Para el Modo Repaso Automático y Flashcards)

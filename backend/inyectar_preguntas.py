@@ -2,41 +2,54 @@ import pandas as pd
 import os
 from sqlalchemy.orm import Session
 from sqlalchemy import text
-from models import SessionLocal, Pregunta
+from models import SessionLocal, Pregunta, TestPlantilla
 
 def inyectar_desde_excel(archivo_excel="preguntas.xlsx"):
-    # 1. Comprobamos si el Excel existe donde debería
     if not os.path.exists(archivo_excel):
-        print(f"❌ ERROR: No encuentro el archivo '{archivo_excel}'.")
-        print("Asegúrate de haberlo guardado dentro de la carpeta 'backend'.")
+        print(f"❌ ERROR: No encuentro '{archivo_excel}'.")
         return
 
     print("📊 Leyendo tu archivo Excel...")
     try:
-        # 2. Pandas lee el Excel entero de un plumazo
         df = pd.read_excel(archivo_excel)
-        
-        # Por si dejas alguna explicación en blanco, le ponemos un texto por defecto
         df['explicacion'] = df['explicacion'].fillna("Consulta el temario para más detalle.")
-        
     except Exception as e:
-        print(f"❌ Error al abrir el Excel (¿está abierto en otro programa?): {e}")
+        print(f"❌ Error al abrir el Excel: {e}")
         return
 
     db: Session = SessionLocal()
     
     try:
-        print("🧹 Haciendo limpieza total en la base de datos (TRUNCATE CASCADE)...")
+        # Añadimos la columna físicamente a PostgreSQL por si no existía
+        db.execute(text("ALTER TABLE preguntas ADD COLUMN IF NOT EXISTS test_plantilla_id INTEGER REFERENCES test_plantillas(id) ON DELETE CASCADE;"))
+        db.commit()
+
+        print("🧹 Borrando SÓLO las preguntas antiguas (Mantenemos las notas de los alumnos)...")
         db.execute(text("TRUNCATE TABLE preguntas CASCADE"))
         db.commit()
 
-        print(f"⏳ Fabricando {len(df)} preguntas nuevas...")
+        print(f"⏳ Vinculando {len(df)} preguntas a sus respectivos Tests...")
         
-        preguntas_nuevas = []
-        # 3. Recorremos fila a fila tu Excel
         for index, fila in df.iterrows():
+            t_id = int(fila['tema_id'])
+            n_test = int(fila['numero_test'])
+
+            # 1. Buscamos si ya existe ese Test en la base de datos. Si no existe, lo creamos.
+            plantilla = db.query(TestPlantilla).filter(
+                TestPlantilla.tema_id == t_id,
+                TestPlantilla.numero_test == n_test
+            ).first()
+
+            if not plantilla:
+                plantilla = TestPlantilla(tema_id=t_id, numero_test=n_test)
+                db.add(plantilla)
+                db.commit()
+                db.refresh(plantilla)
+
+            # 2. Guardamos la pregunta y la metemos dentro de ese Test
             pregunta = Pregunta(
-                tema_id=int(fila['tema_id']),
+                tema_id=t_id,
+                test_plantilla_id=plantilla.id,
                 enunciado=str(fila['enunciado']).strip(),
                 opcion_a=str(fila['opcion_a']).strip(),
                 opcion_b=str(fila['opcion_b']).strip(),
@@ -45,12 +58,10 @@ def inyectar_desde_excel(archivo_excel="preguntas.xlsx"):
                 respuesta_correcta=str(fila['respuesta_correcta']).strip().upper(),
                 explicacion=str(fila['explicacion']).strip()
             )
-            preguntas_nuevas.append(pregunta)
+            db.add(pregunta)
 
-        # 4. Guardamos todo de golpe
-        db.add_all(preguntas_nuevas)
         db.commit()
-        print(f"✅ ¡ÉXITO! Se han guardado {len(preguntas_nuevas)} preguntas en la base de datos.")
+        print("✅ ¡ÉXITO! Base de datos sincronizada perfectamente con tu Excel.")
         
     except Exception as e:
         db.rollback()
