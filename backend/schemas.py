@@ -14,8 +14,14 @@ class TestResultado(BaseModel):
 
 # --- ESQUEMAS PARA AUTENTICACIÓN ---
 
-# El acceso es solo con Google (ver routers/auth.py); no hay esquemas de
-# registro/login por email+contraseña.
+class UsuarioRegistro(BaseModel):
+    nombre: str
+    email: str
+    password: str
+
+class UsuarioLogin(BaseModel):
+    email: str
+    password: str
 
 class GoogleLogin(BaseModel):
     credential: str  # ID token (JWT) que entrega Google Identity Services
