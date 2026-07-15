@@ -65,10 +65,14 @@ app = FastAPI(title="API Academia Oposiciones", lifespan=lifespan)
 app.add_middleware(
     CORSMiddleware,
     allow_origins=[
-        "https://web-mega-flax.vercel.app",  # Tu web real en Vercel
-        "http://localhost:5173",             # Tu web local
+        "https://mega-2-rho.vercel.app",     # Frontend de MEGA2 (producción)
+        "https://web-mega-flax.vercel.app",  # Proyecto Vercel antiguo (por compatibilidad)
+        "http://localhost:5173",             # Desarrollo local
         "http://127.0.0.1:5173",
     ],
+    # Permite también las URLs de "preview" de Vercel del proyecto MEGA2
+    # (p. ej. mega-2-git-rama-usuario.vercel.app) sin tener que listarlas una a una.
+    allow_origin_regex=r"https://mega-2[-a-z0-9]*\.vercel\.app",
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
