@@ -86,16 +86,17 @@ class RespuestaAlumno(Base):
     pregunta_id = Column(Integer, ForeignKey("preguntas.id"))
     es_correcta = Column(Boolean, default=False)
 
-# 6. Tabla de Usuarios (Login por email/contraseña o por Google)
+# 6. Tabla de Usuarios (Login por Google)
 class Usuario(Base):
     __tablename__ = "usuarios"
 
     id = Column(Integer, primary_key=True, index=True)
     nombre = Column(String)
     email = Column(String, unique=True, index=True) # unique=True evita que dos se registren con el mismo email
-    hashed_password = Column(String, nullable=True) # Null si el usuario entra solo con Google
+    hashed_password = Column(String, nullable=True) # Histórico: usuarios antiguos con contraseña (ya solo se entra con Google)
     google_sub = Column(String, unique=True, index=True, nullable=True) # ID único de Google (idinfo['sub'])
     sesion_id = Column(String, nullable=True) # Token de la sesión activa actual; cada login lo renueva e invalida el resto
+    rol = Column(String, nullable=False, default="alumno") # "alumno" | "profesor" | "admin"
 
 # --- TABLAS PARA EL LISTADO DE TESTS ESPECÍFICOS ---
 
@@ -118,4 +119,17 @@ class TestIntento(Base):
     fecha_intento = Column(DateTime, default=datetime.utcnow) # Cuándo lo hizo
     fallos_ultimo = Column(Integer) # Cuántos fallos tuvo en ESTE intento
 
-Base.metadata.create_all(bind=engine)
+# 3. Registro de llamadas a la IA (Gemini) para dar visibilidad de uso y coste
+class IALlamada(Base):
+    __tablename__ = "ia_llamadas"
+
+    id = Column(Integer, primary_key=True, index=True)
+    usuario_id = Column(Integer, index=True)
+    tipo = Column(String) # "resumen" | "esquema"
+    tokens_totales = Column(Integer, nullable=True) # Si la respuesta de Gemini reporta uso de tokens
+    fecha = Column(DateTime, default=datetime.utcnow, index=True)
+
+# El esquema de la base de datos lo gestiona Alembic (ver carpeta `alembic/`).
+# Ejecuta `alembic upgrade head` para crear/actualizar las tablas.
+# (Antes aquí se hacía `Base.metadata.create_all(bind=engine)`, que se ha retirado
+# para tener una única fuente de verdad del esquema y migraciones versionadas.)

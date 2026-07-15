@@ -11,8 +11,11 @@ function limpiarSesionLocal() {
 // cierra la sesión local y redirige al login.
 export async function apiFetch(path, options = {}) {
   const token = localStorage.getItem('token');
+  // No forzamos Content-Type JSON cuando el body es FormData (subida de ficheros):
+  // el navegador debe poner el boundary multipart automáticamente.
+  const esFormData = typeof FormData !== 'undefined' && options.body instanceof FormData;
   const headers = {
-    ...(options.body ? { 'Content-Type': 'application/json' } : {}),
+    ...(options.body && !esFormData ? { 'Content-Type': 'application/json' } : {}),
     ...(token ? { Authorization: `Bearer ${token}` } : {}),
     ...options.headers,
   };
@@ -28,4 +31,14 @@ export async function apiFetch(path, options = {}) {
   }
 
   return response;
+}
+
+// Helper que devuelve el JSON ya parseado y lanza Error(detail) si la respuesta no es OK.
+export async function apiJson(path, options = {}) {
+  const response = await apiFetch(path, options);
+  const data = await response.json().catch(() => ({}));
+  if (!response.ok) {
+    throw new Error(data.detail || 'Ha ocurrido un error en la petición.');
+  }
+  return data;
 }

@@ -45,11 +45,11 @@ export default function Esquema() {
         </div>
       </div>
 
-      <div className="w-full max-w-6xl bg-white rounded-[2rem] shadow-xl border border-gray-100 p-8 min-h-[70vh] flex flex-col">
-        <h2 className="text-3xl font-bold text-gray-800 text-center mb-2">{temaNombre}</h2>
+      <div className="w-full max-w-6xl bg-white rounded-[2rem] shadow-xl border border-gray-100 p-5 sm:p-8 min-h-[70vh] flex flex-col">
+        <h2 className="text-2xl sm:text-3xl font-bold text-gray-800 text-center mb-2">{temaNombre}</h2>
         <p className="text-gray-500 text-center mb-8">Mapa mental generado por IA</p>
 
-        <div className="flex-1 flex items-center justify-center bg-orange-50/30 rounded-3xl border border-orange-100/50 p-4 overflow-hidden">
+        <div className="flex-1 flex items-center justify-center bg-orange-50/30 rounded-3xl border border-orange-100/50 p-2 sm:p-4 overflow-auto">
           {cargando ? (
             <div className="flex flex-col items-center justify-center animate-pulse p-12">
               <span className="text-7xl mb-6 opacity-50">🎨</span>

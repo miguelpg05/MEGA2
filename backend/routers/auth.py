@@ -3,14 +3,13 @@ import secrets
 from fastapi import APIRouter, Depends, HTTPException, status
 from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
 from sqlalchemy.orm import Session
-from passlib.context import CryptContext
 from jose import jwt, JWTError
 from google.oauth2 import id_token as google_id_token
 from google.auth.transport import requests as google_requests
 from datetime import datetime, timedelta
 
 from models import get_db, Usuario
-from schemas import UsuarioRegistro, UsuarioLogin, GoogleLogin, Token, UsuarioActual
+from schemas import GoogleLogin, Token, UsuarioActual
 
 router = APIRouter(prefix="/api/auth", tags=["Autenticación"])
 
@@ -22,15 +21,25 @@ ACCESS_TOKEN_EXPIRE_MINUTES = 60 * 24 * 7 # El token durará 1 semana entera
 GOOGLE_CLIENT_ID = os.getenv("GOOGLE_CLIENT_ID")
 DOMINIO_PERMITIDO = os.getenv("GOOGLE_HOSTED_DOMAIN", "academiamega.net")
 
-# Herramienta para encriptar contraseñas
-pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
+# Bootstrap de roles por variables de entorno (listas de emails separados por comas).
+# Al iniciar sesión, estos emails se promocionan automáticamente al rol indicado.
+def _parse_emails(valor):
+    return {e.strip().lower() for e in (valor or "").split(",") if e.strip()}
+
+ADMIN_EMAILS = _parse_emails(os.getenv("ADMIN_EMAILS"))
+PROFESOR_EMAILS = _parse_emails(os.getenv("PROFESOR_EMAILS"))
+
+_NIVEL_ROL = {"alumno": 0, "profesor": 1, "admin": 2}
+
+def _rol_por_entorno(email: str) -> str:
+    e = email.lower()
+    if e in ADMIN_EMAILS:
+        return "admin"
+    if e in PROFESOR_EMAILS:
+        return "profesor"
+    return "alumno"
+
 bearer_scheme = HTTPBearer(auto_error=False)
-
-def get_password_hash(password):
-    return pwd_context.hash(password)
-
-def verify_password(plain_password, hashed_password):
-    return pwd_context.verify(plain_password, hashed_password)
 
 def _crear_sesion(db: Session, usuario: Usuario) -> str:
     """Genera una nueva sesión y la guarda como la ÚNICA sesión válida del usuario,
@@ -70,6 +79,18 @@ def get_current_user(
         )
     return usuario
 
+def require_staff(usuario: Usuario = Depends(get_current_user)) -> Usuario:
+    """Permite el paso solo a profesores y administradores (gestión de contenido y métricas)."""
+    if usuario.rol not in ("profesor", "admin"):
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Requiere rol de profesor o administrador.")
+    return usuario
+
+def require_admin(usuario: Usuario = Depends(get_current_user)) -> Usuario:
+    """Permite el paso solo a administradores (gestión de usuarios/roles)."""
+    if usuario.rol != "admin":
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Requiere rol de administrador.")
+    return usuario
+
 def _validar_dominio_academia(email: str):
     if not email.lower().endswith(f"@{DOMINIO_PERMITIDO}"):
         raise HTTPException(
@@ -77,45 +98,13 @@ def _validar_dominio_academia(email: str):
             detail=f"Solo se admiten cuentas del correo de la academia (@{DOMINIO_PERMITIDO}).",
         )
 
-# ENDPOINT 1: REGISTRO (email + contraseña, solo para el dominio de la academia)
-@router.post("/registro")
-def registrar_usuario(usuario: UsuarioRegistro, db: Session = Depends(get_db)):
-    _validar_dominio_academia(usuario.email)
+# NOTA: El acceso es EXCLUSIVAMENTE con Google restringido al dominio de la academia.
+# Se eliminaron el registro y el login por email+contraseña (todos los usuarios de
+# @academiamega.net tienen cuenta de Google Workspace). Los usuarios antiguos que se
+# hubieran registrado con contraseña siguen pudiendo entrar con Google: el endpoint
+# de abajo los reconoce y enlaza por su email.
 
-    db_user = db.query(Usuario).filter(Usuario.email == usuario.email).first()
-    if db_user:
-        raise HTTPException(status_code=400, detail="Este email ya está registrado")
-
-    hashed_password = get_password_hash(usuario.password)
-    nuevo_usuario = Usuario(nombre=usuario.nombre, email=usuario.email, hashed_password=hashed_password)
-
-    db.add(nuevo_usuario)
-    db.commit()
-    db.refresh(nuevo_usuario)
-
-    return {"mensaje": "Usuario creado con éxito. ¡Ya puedes iniciar sesión!"}
-
-# ENDPOINT 2: LOGIN con email + contraseña
-@router.post("/login", response_model=Token)
-def iniciar_sesion(usuario: UsuarioLogin, db: Session = Depends(get_db)):
-    db_user = db.query(Usuario).filter(Usuario.email == usuario.email).first()
-    if not db_user or not db_user.hashed_password:
-        raise HTTPException(status_code=400, detail="Email o contraseña incorrectos")
-
-    if not verify_password(usuario.password, db_user.hashed_password):
-        raise HTTPException(status_code=400, detail="Email o contraseña incorrectos")
-
-    sesion_id = _crear_sesion(db, db_user)
-    access_token = create_access_token(db_user.id, sesion_id)
-
-    return {
-        "access_token": access_token,
-        "token_type": "bearer",
-        "usuario_id": db_user.id,
-        "nombre": db_user.nombre,
-    }
-
-# ENDPOINT 3: LOGIN con Google (restringido al dominio de la academia)
+# ENDPOINT 1: LOGIN con Google (restringido al dominio de la academia)
 @router.post("/google", response_model=Token)
 def iniciar_sesion_google(datos: GoogleLogin, db: Session = Depends(get_db)):
     if not GOOGLE_CLIENT_ID:
@@ -135,6 +124,8 @@ def iniciar_sesion_google(datos: GoogleLogin, db: Session = Depends(get_db)):
     if idinfo.get("hd") != DOMINIO_PERMITIDO:
         _validar_dominio_academia(email)  # comprobación de respaldo por si 'hd' no viene
 
+    rol_entorno = _rol_por_entorno(email)
+
     db_user = db.query(Usuario).filter(Usuario.email == email).first()
     if not db_user:
         db_user = Usuario(
@@ -142,12 +133,17 @@ def iniciar_sesion_google(datos: GoogleLogin, db: Session = Depends(get_db)):
             email=email,
             hashed_password=None,
             google_sub=idinfo["sub"],
+            rol=rol_entorno,
         )
         db.add(db_user)
         db.commit()
         db.refresh(db_user)
-    elif not db_user.google_sub:
-        db_user.google_sub = idinfo["sub"]
+    else:
+        if not db_user.google_sub:
+            db_user.google_sub = idinfo["sub"]
+        # Auto-promoción por entorno (nunca degradamos un rol asignado desde el panel).
+        if _NIVEL_ROL.get(rol_entorno, 0) > _NIVEL_ROL.get(db_user.rol or "alumno", 0):
+            db_user.rol = rol_entorno
         db.commit()
 
     sesion_id = _crear_sesion(db, db_user)
@@ -163,7 +159,7 @@ def iniciar_sesion_google(datos: GoogleLogin, db: Session = Depends(get_db)):
 # ENDPOINT 4: Quién soy (para que el frontend valide la sesión al cargar)
 @router.get("/me", response_model=UsuarioActual)
 def usuario_actual(usuario: Usuario = Depends(get_current_user)):
-    return {"usuario_id": usuario.id, "nombre": usuario.nombre, "email": usuario.email}
+    return {"usuario_id": usuario.id, "nombre": usuario.nombre, "email": usuario.email, "rol": usuario.rol}
 
 # ENDPOINT 5: LOGOUT (invalida la sesión en el servidor, no solo en el navegador)
 @router.post("/logout")

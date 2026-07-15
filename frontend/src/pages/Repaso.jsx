@@ -1,29 +1,46 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { apiFetch } from '../api';
+import { Cargando, MensajeError } from '../components/Estado';
 
 export default function Repaso() {
   const navigate = useNavigate();
 
   const [flashcards, setFlashcards] = useState([]);
   const [cargando, setCargando] = useState(true);
+  const [error, setError] = useState(false);
   const [indiceActual, setIndiceActual] = useState(0);
   const [estadoRespuesta, setEstadoRespuesta] = useState(null);
   const [opcionSeleccionada, setOpcionSeleccionada] = useState(null);
 
   // Cargamos los fallos pendientes del usuario autenticado al entrar
-  useEffect(() => {
+  const cargarPendientes = useCallback(() => {
     apiFetch('/api/repaso/pendientes')
-      .then(res => res.json())
+      .then(res => {
+        if (!res.ok) throw new Error('respuesta no OK');
+        return res.json();
+      })
       .then(datos => {
         setFlashcards(datos);
+        setError(false);
         setCargando(false);
       })
-      .catch(error => {
-        console.error("Error al cargar repasos:", error);
+      .catch(err => {
+        console.error("Error al cargar repasos:", err);
+        setError(true);
         setCargando(false);
       });
   }, []);
+
+  useEffect(() => {
+    cargarPendientes();
+  }, [cargarPendientes]);
+
+  const reintentar = () => {
+    setCargando(true);
+    setError(false);
+    cargarPendientes();
+  };
 
   const comprobarRespuesta = async (opcionElegida) => {
     if (estadoRespuesta) return;
@@ -55,8 +72,16 @@ export default function Repaso() {
 
   if (cargando) {
     return (
-      <div className="min-h-screen bg-gray-50 flex items-center justify-center font-sans">
-        <div className="text-orange-500 font-medium animate-pulse">Buscando tus puntos débiles...</div>
+      <div className="min-h-screen bg-gray-50 flex items-center justify-center font-sans p-4">
+        <Cargando texto="Buscando tus puntos débiles..." />
+      </div>
+    );
+  }
+
+  if (error) {
+    return (
+      <div className="min-h-screen bg-gray-50 flex items-center justify-center font-sans p-4">
+        <MensajeError texto="No se pudo cargar tu mazo de repaso. Revisa tu conexión." onReintentar={reintentar} />
       </div>
     );
   }

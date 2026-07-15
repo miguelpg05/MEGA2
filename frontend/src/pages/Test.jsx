@@ -1,6 +1,7 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import { useNavigate, useLocation } from 'react-router-dom';
 import { apiFetch } from '../api';
+import { Cargando, MensajeError } from '../components/Estado';
 
 export default function Test() {
   const navigate = useNavigate();
@@ -13,6 +14,7 @@ export default function Test() {
   // Estados de datos y carga
   const [preguntasTest, setPreguntasTest] = useState([]);
   const [cargando, setCargando] = useState(true);
+  const [error, setError] = useState(false);
 
   // Estados del juego
   const [indicePregunta, setIndicePregunta] = useState(0);
@@ -31,27 +33,39 @@ export default function Test() {
   const [mostrarFlashcard, setMostrarFlashcard] = useState(false);
   const [flashcardVolteada, setFlashcardVolteada] = useState(false);
 
-  // --- AQUÍ ESTÁ EL CAMBIO CLAVE ---
+  const cargarPreguntas = useCallback(() => {
+    if (!testPlantillaId) return;
+    apiFetch(`/api/test/generar?test_plantilla_id=${testPlantillaId}`)
+      .then(res => {
+        if (!res.ok) throw new Error('respuesta no OK');
+        return res.json();
+      })
+      .then(datos => {
+        setPreguntasTest(datos);
+        setError(false);
+        setCargando(false);
+      })
+      .catch(err => {
+        console.error("Error al cargar las preguntas:", err);
+        setError(true);
+        setCargando(false);
+      });
+  }, [testPlantillaId]);
+
   useEffect(() => {
     // Si entran directo a la ruta sin seleccionar un test, los devolvemos al inicio
     if (!testPlantillaId) {
       navigate('/');
       return;
     }
+    cargarPreguntas();
+  }, [testPlantillaId, navigate, cargarPreguntas]);
 
-    // Pedimos al backend las preguntas EXACTAS de este test concreto
-    apiFetch(`/api/test/generar?test_plantilla_id=${testPlantillaId}`)
-      .then(res => res.json())
-      .then(datos => {
-        setPreguntasTest(datos);
-        setCargando(false);
-      })
-      .catch(error => {
-        console.error("Error al cargar las preguntas:", error);
-        setCargando(false);
-      });
-  }, [testPlantillaId, navigate]); 
-  // ----------------------------------
+  const reintentar = () => {
+    setCargando(true);
+    setError(false);
+    cargarPreguntas();
+  };
 
   useEffect(() => {
     if (tiempoRestante <= 0 || cargando || testFinalizado || preguntasTest.length === 0) return;
@@ -160,8 +174,16 @@ export default function Test() {
 
   if (cargando) {
     return (
-      <div className="min-h-screen bg-gray-50 flex items-center justify-center font-sans">
-        <div className="text-orange-500 font-medium animate-pulse">Preparando test inteligente...</div>
+      <div className="min-h-screen bg-gray-50 flex items-center justify-center font-sans p-4">
+        <Cargando texto="Preparando test inteligente..." />
+      </div>
+    );
+  }
+
+  if (error) {
+    return (
+      <div className="min-h-screen bg-gray-50 flex items-center justify-center font-sans p-4">
+        <MensajeError texto="No se pudieron cargar las preguntas del test. Revisa tu conexión." onReintentar={reintentar} />
       </div>
     );
   }
@@ -228,9 +250,9 @@ export default function Test() {
 
   return (
     <div className="min-h-screen bg-gray-50 flex flex-col items-center py-12 px-4 font-sans relative">
-      <div className="w-full max-w-3xl flex justify-between items-center mb-8">
+      <div className="w-full max-w-3xl flex flex-wrap justify-between items-center gap-3 mb-8">
         <button onClick={() => navigate('/listado-tests', { state: { temaId: temaIdActual } })} className="text-gray-400 hover:text-gray-600 transition-colors cursor-pointer font-medium">✕ Salir</button>
-        <div className="flex gap-4">
+        <div className="flex flex-wrap gap-3">
           <div className={`text-sm font-medium px-4 py-1.5 rounded-full shadow-sm border transition-colors ${tiempoRestante < 30 ? 'bg-red-50 text-red-600 border-red-200 animate-pulse' : 'bg-white text-gray-600 border-gray-200'}`}>
             ⏱ {formatearTiempo(tiempoRestante)}
           </div>

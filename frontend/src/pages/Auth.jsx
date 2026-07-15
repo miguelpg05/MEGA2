@@ -2,15 +2,14 @@ import React, { useState, useEffect, useRef } from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
 import { apiFetch } from '../api';
 import { GOOGLE_CLIENT_ID } from '../config';
+import { useAuth } from '../auth/AuthContext';
 
 export default function Auth() {
-  const [esLogin, setEsLogin] = useState(true);
-  const [formData, setFormData] = useState({ nombre: '', email: '', password: '' });
   const [error, setError] = useState('');
-  const [mensaje, setMensaje] = useState('');
   const navigate = useNavigate();
   const [searchParams] = useSearchParams();
   const googleBtnRef = useRef(null);
+  const { recargar } = useAuth();
 
   // Si nos han redirigido aquí porque la sesión se abrió en otro dispositivo, avisamos
   useEffect(() => {
@@ -19,16 +18,18 @@ export default function Auth() {
     }
   }, [searchParams]);
 
-  const guardarSesionYEntrar = (data) => {
+  const guardarSesionYEntrar = async (data) => {
     localStorage.setItem('token', data.access_token);
     localStorage.setItem('usuario_id', data.usuario_id);
     localStorage.setItem('nombre_usuario', data.nombre);
+    // Refrescamos el contexto de auth (valida /me y carga el usuario) antes de entrar,
+    // para que el vigilante de rutas no nos rebote al login por no tener usuario aún.
+    await recargar();
     navigate('/');
   };
 
   const handleGoogleCredential = async (respuestaGoogle) => {
     setError('');
-    setMensaje('');
     try {
       const response = await apiFetch('/api/auth/google', {
         method: 'POST',
@@ -38,7 +39,7 @@ export default function Auth() {
       if (!response.ok) {
         throw new Error(data.detail || 'No se pudo iniciar sesión con Google');
       }
-      guardarSesionYEntrar(data);
+      await guardarSesionYEntrar(data);
     } catch (err) {
       setError(err.message);
     }
@@ -62,10 +63,15 @@ export default function Auth() {
           callback: (respuesta) => handleGoogleCredentialRef.current(respuesta),
           hd: 'academiamega.net',
         });
+        // Ancho adaptativo: medimos el contenedor y lo limitamos al máximo de
+        // Google (400px). Así el botón nunca desborda en móviles estrechos (<360px).
+        const contenedor = googleBtnRef.current.parentElement;
+        const anchoDisponible = contenedor ? contenedor.offsetWidth : 320;
+        const anchoBoton = Math.min(400, Math.max(200, Math.floor(anchoDisponible)));
         window.google.accounts.id.renderButton(googleBtnRef.current, {
           theme: 'outline',
           size: 'large',
-          width: 336,
+          width: anchoBoton,
           text: 'continue_with',
           locale: 'es',
         });
@@ -78,124 +84,32 @@ export default function Auth() {
     return () => { cancelado = true; };
   }, []);
 
-  const handleChange = (e) => {
-    setFormData({ ...formData, [e.target.name]: e.target.value });
-  };
-
-  const handleSubmit = async (e) => {
-    e.preventDefault();
-    setError('');
-    setMensaje('');
-
-    const endpoint = esLogin ? '/api/auth/login' : '/api/auth/registro';
-    const body = esLogin
-      ? { email: formData.email, password: formData.password }
-      : { nombre: formData.nombre, email: formData.email, password: formData.password };
-
-    try {
-      const response = await apiFetch(endpoint, {
-        method: 'POST',
-        body: JSON.stringify(body)
-      });
-
-      const data = await response.json();
-
-      if (!response.ok) {
-        throw new Error(data.detail || "Error en la autenticación");
-      }
-
-      if (esLogin) {
-        guardarSesionYEntrar(data);
-      } else {
-        // ¡REGISTRO EXITOSO!
-        setMensaje("¡Cuenta creada! Ya puedes iniciar sesión.");
-        setEsLogin(true); // Lo pasamos a la pantalla de login
-      }
-    } catch (err) {
-      setError(err.message);
-    }
-  };
-
   return (
     <div className="min-h-screen bg-gray-50 flex flex-col justify-center items-center p-4 font-sans">
-      <div className="max-w-md w-full bg-white rounded-[2rem] shadow-xl p-8 border border-gray-100">
-        
+      <div className="max-w-md w-full bg-white rounded-[2rem] shadow-xl p-6 sm:p-8 border border-gray-100">
+
         <div className="text-center mb-8">
           <div className="text-5xl mb-4">🏛️</div>
-          <h2 className="text-2xl font-bold text-gray-800">
-            {esLogin ? 'Bienvenido a tu Academia' : 'Comienza tu preparación'}
-          </h2>
-          <p className="text-gray-500 mt-2">
-            {esLogin ? 'Inicia sesión para continuar tu progreso' : 'Crea tu cuenta y personaliza tu estudio'}
-          </p>
+          <h2 className="text-2xl font-bold text-gray-800">Bienvenido a tu Academia</h2>
+          <p className="text-gray-500 mt-2">Accede con tu cuenta de la academia para continuar</p>
         </div>
 
-        {error && <div className="bg-red-50 text-red-600 p-3 rounded-xl text-sm mb-4 text-center">{error}</div>}
-        {mensaje && <div className="bg-green-50 text-green-600 p-3 rounded-xl text-sm mb-4 text-center">{mensaje}</div>}
+        {error && <div className="bg-red-50 text-red-600 p-3 rounded-xl text-sm mb-6 text-center">{error}</div>}
 
-        {GOOGLE_CLIENT_ID && (
+        {GOOGLE_CLIENT_ID ? (
           <>
             <div className="flex justify-center mb-6">
               <div ref={googleBtnRef}></div>
             </div>
-            <div className="flex items-center gap-3 mb-6">
-              <div className="flex-1 h-px bg-gray-200"></div>
-              <span className="text-xs text-gray-400 uppercase tracking-wide">o con tu email</span>
-              <div className="flex-1 h-px bg-gray-200"></div>
-            </div>
+            <p className="text-center text-xs text-gray-400">
+              Solo se admiten cuentas <span className="font-medium text-gray-500">@academiamega.net</span>
+            </p>
           </>
+        ) : (
+          <div className="bg-amber-50 text-amber-700 p-4 rounded-xl text-sm text-center">
+            El inicio de sesión con Google no está configurado. Define <code>VITE_GOOGLE_CLIENT_ID</code> en el entorno del frontend.
+          </div>
         )}
-
-        <form onSubmit={handleSubmit} className="space-y-4">
-          {!esLogin && (
-            <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1">Nombre o Alias</label>
-              <input 
-                type="text" name="nombre" required={!esLogin}
-                className="w-full px-4 py-3 rounded-xl bg-gray-50 border border-gray-200 focus:bg-white focus:ring-2 focus:ring-orange-500 outline-none transition-all"
-                placeholder="Ej: Opositor123"
-                onChange={handleChange}
-              />
-            </div>
-          )}
-          
-          <div>
-            <label className="block text-sm font-medium text-gray-700 mb-1">Correo Electrónico</label>
-            <input 
-              type="email" name="email" required
-              className="w-full px-4 py-3 rounded-xl bg-gray-50 border border-gray-200 focus:bg-white focus:ring-2 focus:ring-orange-500 outline-none transition-all"
-              placeholder="tu@email.com"
-              onChange={handleChange}
-            />
-          </div>
-
-          <div>
-            <label className="block text-sm font-medium text-gray-700 mb-1">Contraseña</label>
-            <input 
-              type="password" name="password" required
-              className="w-full px-4 py-3 rounded-xl bg-gray-50 border border-gray-200 focus:bg-white focus:ring-2 focus:ring-orange-500 outline-none transition-all"
-              placeholder="••••••••"
-              onChange={handleChange}
-            />
-          </div>
-
-          <button 
-            type="submit"
-            className="w-full bg-orange-600 text-white font-bold py-3 rounded-xl hover:bg-orange-700 transition-colors shadow-lg shadow-orange-200 mt-2"
-          >
-            {esLogin ? 'Entrar' : 'Crear mi cuenta'}
-          </button>
-        </form>
-
-        <div className="mt-8 text-center text-sm text-gray-500">
-          {esLogin ? '¿No tienes cuenta? ' : '¿Ya tienes cuenta? '}
-          <button 
-            onClick={() => { setEsLogin(!esLogin); setError(''); setMensaje(''); }}
-            className="text-orange-600 font-bold hover:underline"
-          >
-            {esLogin ? 'Regístrate aquí' : 'Inicia sesión'}
-          </button>
-        </div>
 
       </div>
     </div>

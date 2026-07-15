@@ -8,6 +8,7 @@ from collections import defaultdict
 
 from models import get_db, TestPlantilla, TestIntento, Pregunta, Usuario
 from routers.auth import get_current_user
+from services.preguntas import texto_opcion_correcta
 
 router = APIRouter(prefix="/api/test", tags=["Progreso de Tests"])
 
@@ -29,21 +30,15 @@ def generar_test_exacto(test_plantilla_id: int, usuario: Usuario = Depends(get_c
     
     test_formateado = []
     for p in preguntas_db:
-        # Limpiamos la respuesta del Excel por si has puesto "A.", " a " o el texto entero
-        letra_limpia = str(p.respuesta_correcta).strip().lower()[0] # Coge solo la primera letra: "b"
-        
-        # Nos aseguramos de que sea a, b, c o d
-        if letra_limpia not in ['a', 'b', 'c', 'd']:
-            letra_limpia = 'a' # Por defecto si hay un error grave en el Excel
-            
-        texto_respuesta = getattr(p, f"opcion_{letra_limpia}")
+        # `texto_opcion_correcta` es la única fuente de verdad para traducir la
+        # respuesta correcta (letra canónica A–D o texto antiguo) a su texto.
         opciones_lista = [p.opcion_a, p.opcion_b, p.opcion_c, p.opcion_d]
 
         test_formateado.append({
             "id": p.id,
             "pregunta": p.enunciado,
             "opciones": opciones_lista,
-            "respuestaCorrecta": texto_respuesta,
+            "respuestaCorrecta": texto_opcion_correcta(p),
             "explicacion": p.explicacion or "Consulta el temario para más detalle."
         })
         

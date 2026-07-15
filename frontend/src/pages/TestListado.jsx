@@ -1,6 +1,7 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import { useNavigate, useLocation } from 'react-router-dom';
 import { apiFetch } from '../api';
+import { PantallaCarga, MensajeError } from '../components/Estado';
 
 export default function TestListado() {
   const navigate = useNavigate();
@@ -10,19 +11,35 @@ export default function TestListado() {
 
   const [listadoTests, setListadoTests] = useState([]);
   const [cargando, setCargando] = useState(true);
+  const [error, setError] = useState(false);
 
-  useEffect(() => {
+  const cargarListado = useCallback(() => {
     apiFetch(`/api/test/listado-progreso?tema_id=${temaIdSeleccionado}`)
-      .then(res => res.json())
+      .then(res => {
+        if (!res.ok) throw new Error('respuesta no OK');
+        return res.json();
+      })
       .then(datos => {
         setListadoTests(datos);
+        setError(false);
         setCargando(false);
       })
-      .catch(error => {
-        console.error("Error al cargar listado:", error);
+      .catch(err => {
+        console.error("Error al cargar listado:", err);
+        setError(true);
         setCargando(false);
       });
   }, [temaIdSeleccionado]);
+
+  useEffect(() => {
+    cargarListado();
+  }, [cargarListado]);
+
+  const reintentar = () => {
+    setCargando(true);
+    setError(false);
+    cargarListado();
+  };
 
   const obtenerColorIndicador = (fallos) => {
     if (fallos === null) return "bg-gray-100"; 
@@ -36,22 +53,29 @@ export default function TestListado() {
   };
 
   if (cargando) {
-    return <div className="p-8 text-center text-orange-500 font-medium animate-pulse">Cargando tu historial de tests...</div>;
+    return <PantallaCarga texto="Cargando tu historial de tests..." />;
+  }
+
+  if (error) {
+    return (
+      <div className="min-h-screen bg-gray-50 flex items-center justify-center font-sans p-4">
+        <MensajeError texto="No se pudo cargar el listado de tests. Revisa tu conexión." onReintentar={reintentar} />
+      </div>
+    );
   }
 
   return (
-    <div className="min-h-screen bg-gray-50 p-6 font-sans">
-      {/* AQUÍ ESTÁ EL CAMBIO: max-w-3xl en lugar de max-w-4xl para estrecharlo más */}
-      <div className="max-w-3xl mx-auto bg-white rounded-3xl p-6 md:p-8 shadow-sm border border-gray-100 overflow-x-auto">
-        
-        <header className="mb-6 flex justify-between items-center">
+    <div className="min-h-screen bg-gray-50 p-4 sm:p-6 font-sans">
+      <div className="max-w-3xl mx-auto bg-white rounded-3xl p-4 sm:p-6 md:p-8 shadow-sm border border-gray-100 overflow-x-auto">
+
+        <header className="mb-6 flex flex-wrap justify-between items-center gap-3">
           <div>
-            <h1 className="text-2xl font-bold text-gray-800">
+            <h1 className="text-xl sm:text-2xl font-bold text-gray-800">
               Banco de Tests {temaIdSeleccionado === 1 ? '(Tema 1)' : '(Tema 2)'}
             </h1>
             <p className="text-gray-500 text-sm mt-1">Tests de 10 preguntas. Controla tu progreso.</p>
           </div>
-          <button 
+          <button
             onClick={() => navigate('/')}
             className="text-sm bg-gray-100 text-gray-600 px-4 py-2 rounded-xl hover:bg-gray-200 transition-colors cursor-pointer"
           >
@@ -59,7 +83,7 @@ export default function TestListado() {
           </button>
         </header>
 
-        <table className="w-full text-left border-collapse">
+        <table className="w-full text-left border-collapse min-w-[420px]">
           {/* Cabecera Naranja */}
           <thead className="text-white uppercase text-xs font-bold tracking-wider bg-orange-500">
             <tr>
