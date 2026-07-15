@@ -1,21 +1,21 @@
 import React, { useState, useEffect } from 'react';
 import { useNavigate, useLocation } from 'react-router-dom';
 import MermaidDiagram from '../components/MermaidDiagram';
+import { apiFetch } from '../api';
 
 export default function Esquema() {
   const navigate = useNavigate();
   const location = useLocation();
-  
+
   const temaNombre = location.state?.temaNombre || "Tema General";
-  
+
   const [codigoDiagrama, setCodigoDiagrama] = useState('');
   // Inicializamos en true, así no hace falta volver a llamarlo en el useEffect
   const [cargando, setCargando] = useState(true);
 
   useEffect(() => {
-    fetch('https://backend-academia-kxx5.onrender.com/api/ia/esquema', {
+    apiFetch('/api/ia/esquema', {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ tema_nombre: temaNombre })
     })
       .then(res => res.json())

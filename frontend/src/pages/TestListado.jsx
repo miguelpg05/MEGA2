@@ -1,18 +1,18 @@
 import React, { useState, useEffect } from 'react';
 import { useNavigate, useLocation } from 'react-router-dom';
+import { apiFetch } from '../api';
 
 export default function TestListado() {
   const navigate = useNavigate();
   const location = useLocation();
-  
+
   const temaIdSeleccionado = location.state?.temaId || 1;
-  const usuarioId = localStorage.getItem('usuario_id');
 
   const [listadoTests, setListadoTests] = useState([]);
   const [cargando, setCargando] = useState(true);
 
   useEffect(() => {
-    fetch(`https://backend-academia-kxx5.onrender.com/api/test/listado-progreso?alumno_id=${usuarioId}&tema_id=${temaIdSeleccionado}`)
+    apiFetch(`/api/test/listado-progreso?tema_id=${temaIdSeleccionado}`)
       .then(res => res.json())
       .then(datos => {
         setListadoTests(datos);
@@ -22,7 +22,7 @@ export default function TestListado() {
         console.error("Error al cargar listado:", error);
         setCargando(false);
       });
-  }, [usuarioId, temaIdSeleccionado]);
+  }, [temaIdSeleccionado]);
 
   const obtenerColorIndicador = (fallos) => {
     if (fallos === null) return "bg-gray-100"; 

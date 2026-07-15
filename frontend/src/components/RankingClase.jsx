@@ -1,12 +1,13 @@
 import React, { useEffect, useState } from 'react';
+import { apiFetch } from '../api';
 
 export default function RankingClase() {
   const [lideres, setLideres] = useState([]);
 
   useEffect(() => {
-    // Le añadimos la hora actual a la ruta para que el navegador 
+    // Le añadimos la hora actual a la ruta para que el navegador
     // crea que es una dirección nueva y NUNCA use la caché
-    fetch(`https://backend-academia-kxx5.onrender.com/api/ranking/clase?t=${Date.now()}`)
+    apiFetch(`/api/ranking/clase?t=${Date.now()}`)
       .then(res => res.json())
       .then(data => setLideres(data))
       .catch(error => console.error("Error al cargar el ranking:", error));

@@ -1,33 +1,23 @@
 from fastapi import APIRouter, Depends
 from sqlalchemy.orm import Session
-from sqlalchemy import desc, func # <-- AÑADIDO: 'func' para poder hacer order_by(func.random())
+from sqlalchemy import func
 from typing import Optional
 from pydantic import BaseModel
 from datetime import datetime
 from collections import defaultdict
 
-# <-- AÑADIDO: Importamos el modelo 'Pregunta'
-from models import SessionLocal, TestPlantilla, TestIntento, Pregunta 
+from models import get_db, TestPlantilla, TestIntento, Pregunta, Usuario
+from routers.auth import get_current_user
 
 router = APIRouter(prefix="/api/test", tags=["Progreso de Tests"])
 
 class IntentoRequest(BaseModel):
-    alumno_id: int
     test_plantilla_id: int
     fallos: int
 
-def get_db():
-    db = SessionLocal()
-    try:
-        yield db
-    finally:
-        db.close()
-
-# --- NUEVA RUTA: GENERADOR DE TESTS ÚNICOS ---
-# --- NUEVA RUTA: GENERADOR DE TESTS EXACTOS DESDE EXCEL ---
-# --- NUEVA RUTA: GENERADOR DE TESTS EXACTOS DESDE EXCEL ---
+# --- RUTA: GENERADOR DE TESTS EXACTOS DESDE EXCEL ---
 @router.get("/generar")
-def generar_test_exacto(test_plantilla_id: int, db: Session = Depends(get_db)):
+def generar_test_exacto(test_plantilla_id: int, usuario: Usuario = Depends(get_current_user), db: Session = Depends(get_db)):
     """
     Busca SOLAMENTE las preguntas vinculadas a este test específico en el Excel.
     Las desordena para que el alumno no memorice el orden, pero las preguntas son fijas.
@@ -39,8 +29,6 @@ def generar_test_exacto(test_plantilla_id: int, db: Session = Depends(get_db)):
     
     test_formateado = []
     for p in preguntas_db:
-        texto_pregunta = p.pregunta if hasattr(p, 'pregunta') else p.enunciado
-        
         # Limpiamos la respuesta del Excel por si has puesto "A.", " a " o el texto entero
         letra_limpia = str(p.respuesta_correcta).strip().lower()[0] # Coge solo la primera letra: "b"
         
@@ -53,22 +41,22 @@ def generar_test_exacto(test_plantilla_id: int, db: Session = Depends(get_db)):
 
         test_formateado.append({
             "id": p.id,
-            "pregunta": texto_pregunta,
-            "opciones": opciones_lista, 
-            "respuestaCorrecta": texto_respuesta, 
-            "explicacion": getattr(p, 'explicacion', "Consulta el temario para más detalle.")
+            "pregunta": p.enunciado,
+            "opciones": opciones_lista,
+            "respuestaCorrecta": texto_respuesta,
+            "explicacion": p.explicacion or "Consulta el temario para más detalle."
         })
         
     return test_formateado
 # --- RUTAS DE PROGRESO Y REGISTRO ---
 @router.get("/listado-progreso")
-def obtener_listado_tests_con_progreso(alumno_id: int, tema_id: Optional[int] = None, db: Session = Depends(get_db)):
+def obtener_listado_tests_con_progreso(tema_id: Optional[int] = None, usuario: Usuario = Depends(get_current_user), db: Session = Depends(get_db)):
     # 1. PRIMER VIAJE: Obtenemos los tests correspondientes
     query_tests = db.query(TestPlantilla)
     if tema_id:
         query_tests = query_tests.filter(TestPlantilla.tema_id == tema_id)
     tests = query_tests.order_by(TestPlantilla.numero_test).all()
-    
+
     # Si no hay tests, cortamos rápido
     if not tests:
         return []
@@ -76,7 +64,7 @@ def obtener_listado_tests_con_progreso(alumno_id: int, tema_id: Optional[int] = 
     # 2. SEGUNDO VIAJE: Pedimos de GOLPE todos los intentos del alumno para estos tests
     test_ids = [t.id for t in tests]
     intentos_totales = db.query(TestIntento).filter(
-        TestIntento.alumno_id == alumno_id,
+        TestIntento.alumno_id == usuario.id,
         TestIntento.test_plantilla_id.in_(test_ids)
     ).all()
     
@@ -114,9 +102,9 @@ def obtener_listado_tests_con_progreso(alumno_id: int, tema_id: Optional[int] = 
     return listado_final
 
 @router.post("/registrar-intento")
-def registrar_intento_test(datos: IntentoRequest, db: Session = Depends(get_db)):
+def registrar_intento_test(datos: IntentoRequest, usuario: Usuario = Depends(get_current_user), db: Session = Depends(get_db)):
     nuevo_intento = TestIntento(
-        alumno_id=datos.alumno_id,
+        alumno_id=usuario.id,
         test_plantilla_id=datos.test_plantilla_id,
         fallos_ultimo=datos.fallos,
         fecha_intento=datetime.utcnow()

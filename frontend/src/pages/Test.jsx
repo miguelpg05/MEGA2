@@ -1,16 +1,14 @@
 import React, { useState, useEffect } from 'react';
 import { useNavigate, useLocation } from 'react-router-dom';
+import { apiFetch } from '../api';
 
 export default function Test() {
   const navigate = useNavigate();
-  const location = useLocation(); 
-  
+  const location = useLocation();
+
   // Capturamos el ID del tema y el ID específico del test desde el Banco de Tests
   const temaIdActual = location.state?.temaId || 1;
   const testPlantillaId = location.state?.testPlantillaId; // <-- ID del test (ej. el test nº 1)
-
-  const usuarioId = localStorage.getItem('usuario_id');
-  const nombreUsuario = localStorage.getItem('nombre_usuario') || "Opositor";
 
   // Estados de datos y carga
   const [preguntasTest, setPreguntasTest] = useState([]);
@@ -42,7 +40,7 @@ export default function Test() {
     }
 
     // Pedimos al backend las preguntas EXACTAS de este test concreto
-    fetch(`https://backend-academia-kxx5.onrender.com/api/test/generar?test_plantilla_id=${testPlantillaId}`)
+    apiFetch(`/api/test/generar?test_plantilla_id=${testPlantillaId}`)
       .then(res => res.json())
       .then(datos => {
         setPreguntasTest(datos);
@@ -67,11 +65,9 @@ export default function Test() {
     if (!testPlantillaId) return; 
 
     try {
-      await fetch('https://backend-academia-kxx5.onrender.com/api/test/registrar-intento', {
+      await apiFetch('/api/test/registrar-intento', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ 
-          alumno_id: parseInt(usuarioId),
+        body: JSON.stringify({
           test_plantilla_id: testPlantillaId,
           fallos: fallosTotales
         })
@@ -84,12 +80,10 @@ export default function Test() {
 
   const enviarPuntuacion = async (puntosLogrados) => {
     try {
-      await fetch('https://backend-academia-kxx5.onrender.com/api/ranking/guardar', {
+      await apiFetch('/api/ranking/guardar', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ 
-          nombre: nombreUsuario,
-          puntos: puntosLogrados 
+        body: JSON.stringify({
+          puntos: puntosLogrados
         })
       });
       console.log("✅ Puntuación enviada al ranking");
@@ -99,15 +93,11 @@ export default function Test() {
   };
 
   const enviarResultadosAlBackend = async () => {
-    const payload = {
-        alumno_id: parseInt(usuarioId), 
-        respuestas: historialRespuestas
-    };
+    const payload = { respuestas: historialRespuestas };
 
     try {
-        const response = await fetch('https://backend-academia-kxx5.onrender.com/api/progreso/guardar-resultados', {
+        const response = await apiFetch('/api/progreso/guardar-resultados', {
             method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify(payload)
         });
 
@@ -146,13 +136,9 @@ export default function Test() {
 
     if (!esCorrecta) {
       try {
-        await fetch('https://backend-academia-kxx5.onrender.com/api/test/fallo', {
+        await apiFetch('/api/test/fallo', {
           method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ 
-            pregunta_id: preguntaActual.id,
-            alumno_id: parseInt(usuarioId) 
-          })
+          body: JSON.stringify({ pregunta_id: preguntaActual.id })
         });
       } catch (error) {
         console.error("Error al registrar fallo:", error);

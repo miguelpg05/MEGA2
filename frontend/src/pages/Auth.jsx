@@ -1,5 +1,7 @@
-import React, { useState } from 'react';
-import { useNavigate } from 'react-router-dom';
+import React, { useState, useEffect, useRef } from 'react';
+import { useNavigate, useSearchParams } from 'react-router-dom';
+import { apiFetch } from '../api';
+import { GOOGLE_CLIENT_ID } from '../config';
 
 export default function Auth() {
   const [esLogin, setEsLogin] = useState(true);
@@ -7,9 +9,74 @@ export default function Auth() {
   const [error, setError] = useState('');
   const [mensaje, setMensaje] = useState('');
   const navigate = useNavigate();
+  const [searchParams] = useSearchParams();
+  const googleBtnRef = useRef(null);
 
-  // ATENCIÓN: Si vas a subir esto a Vercel, recuerda cambiar esta URL por la de tu Render
-  const BASE_URL = 'https://backend-academia-kxx5.onrender.com';
+  // Si nos han redirigido aquí porque la sesión se abrió en otro dispositivo, avisamos
+  useEffect(() => {
+    if (searchParams.get('motivo') === 'sesion_otro_dispositivo') {
+      setError('Se ha cerrado tu sesión porque se ha iniciado sesión con esta cuenta en otro dispositivo.');
+    }
+  }, [searchParams]);
+
+  const guardarSesionYEntrar = (data) => {
+    localStorage.setItem('token', data.access_token);
+    localStorage.setItem('usuario_id', data.usuario_id);
+    localStorage.setItem('nombre_usuario', data.nombre);
+    navigate('/');
+  };
+
+  const handleGoogleCredential = async (respuestaGoogle) => {
+    setError('');
+    setMensaje('');
+    try {
+      const response = await apiFetch('/api/auth/google', {
+        method: 'POST',
+        body: JSON.stringify({ credential: respuestaGoogle.credential })
+      });
+      const data = await response.json();
+      if (!response.ok) {
+        throw new Error(data.detail || 'No se pudo iniciar sesión con Google');
+      }
+      guardarSesionYEntrar(data);
+    } catch (err) {
+      setError(err.message);
+    }
+  };
+
+  // Mantenemos siempre la versión más reciente del callback sin tener que
+  // reinicializar el botón de Google en cada render.
+  const handleGoogleCredentialRef = useRef(handleGoogleCredential);
+  handleGoogleCredentialRef.current = handleGoogleCredential;
+
+  // Carga el botón oficial de Google (el script se incluye en index.html)
+  useEffect(() => {
+    if (!GOOGLE_CLIENT_ID) return;
+    let cancelado = false;
+
+    const intentarInicializar = () => {
+      if (cancelado) return;
+      if (window.google?.accounts?.id && googleBtnRef.current) {
+        window.google.accounts.id.initialize({
+          client_id: GOOGLE_CLIENT_ID,
+          callback: (respuesta) => handleGoogleCredentialRef.current(respuesta),
+          hd: 'academiamega.net',
+        });
+        window.google.accounts.id.renderButton(googleBtnRef.current, {
+          theme: 'outline',
+          size: 'large',
+          width: 336,
+          text: 'continue_with',
+          locale: 'es',
+        });
+      } else {
+        setTimeout(intentarInicializar, 150);
+      }
+    };
+    intentarInicializar();
+
+    return () => { cancelado = true; };
+  }, []);
 
   const handleChange = (e) => {
     setFormData({ ...formData, [e.target.name]: e.target.value });
@@ -21,14 +88,13 @@ export default function Auth() {
     setMensaje('');
 
     const endpoint = esLogin ? '/api/auth/login' : '/api/auth/registro';
-    const body = esLogin 
+    const body = esLogin
       ? { email: formData.email, password: formData.password }
       : { nombre: formData.nombre, email: formData.email, password: formData.password };
 
     try {
-      const response = await fetch(`${BASE_URL}${endpoint}`, {
+      const response = await apiFetch(endpoint, {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(body)
       });
 
@@ -39,13 +105,7 @@ export default function Auth() {
       }
 
       if (esLogin) {
-        // ¡LOGIN EXITOSO! Guardamos la "pulsera" y los datos en el navegador
-        localStorage.setItem('token', data.access_token);
-        localStorage.setItem('usuario_id', data.usuario_id);
-        localStorage.setItem('nombre_usuario', data.nombre);
-        
-        // Lo mandamos directo a su panel personal
-        navigate('/');
+        guardarSesionYEntrar(data);
       } else {
         // ¡REGISTRO EXITOSO!
         setMensaje("¡Cuenta creada! Ya puedes iniciar sesión.");
@@ -72,6 +132,19 @@ export default function Auth() {
 
         {error && <div className="bg-red-50 text-red-600 p-3 rounded-xl text-sm mb-4 text-center">{error}</div>}
         {mensaje && <div className="bg-green-50 text-green-600 p-3 rounded-xl text-sm mb-4 text-center">{mensaje}</div>}
+
+        {GOOGLE_CLIENT_ID && (
+          <>
+            <div className="flex justify-center mb-6">
+              <div ref={googleBtnRef}></div>
+            </div>
+            <div className="flex items-center gap-3 mb-6">
+              <div className="flex-1 h-px bg-gray-200"></div>
+              <span className="text-xs text-gray-400 uppercase tracking-wide">o con tu email</span>
+              <div className="flex-1 h-px bg-gray-200"></div>
+            </div>
+          </>
+        )}
 
         <form onSubmit={handleSubmit} className="space-y-4">
           {!esLogin && (

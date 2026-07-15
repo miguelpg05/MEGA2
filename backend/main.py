@@ -1,14 +1,16 @@
-import random
+import os
 from datetime import datetime
-from fastapi import FastAPI, Depends
+from fastapi import FastAPI, Depends, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
+from sqlalchemy import text
 from sqlalchemy.orm import Session
-from google import genai 
+from google import genai
 
 # Importamos todos los modelos y routers necesarios
-from models import SessionLocal, engine, Base, TestPlantilla, Tema, Pregunta, Puntuacion, RegistroFallo
+from models import get_db, SessionLocal, TestPlantilla, Tema, Pregunta, Puntuacion, RegistroFallo, Usuario
 from routers import progreso, auth, progreso_test
+from routers.auth import get_current_user
 
 # ==========================================
 # 1. INICIALIZACIÓN DE LA APP Y CORS
@@ -21,12 +23,13 @@ app.add_middleware(
         "https://web-mega-flax.vercel.app", # Tu web real en Vercel
         "http://localhost:5173",            # Tu web local
         "http://127.0.0.1:5173",
-        "*"                                 # Asterisco para evitar bloqueos en desarrollo
     ],
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
 )
+
+GEMINI_API_KEY = os.getenv("GEMINI_API_KEY")
 
 # ==========================================
 # 2. INCLUSIÓN DE RUTAS EXTERNAS
@@ -36,15 +39,8 @@ app.include_router(auth.router)
 app.include_router(progreso_test.router)
 
 # ==========================================
-# 3. BASE DE DATOS Y MODELOS PYDANTIC
+# 3. MODELOS PYDANTIC
 # ==========================================
-def get_db():
-    db = SessionLocal()
-    try:
-        yield db
-    finally:
-        db.close()
-
 class FalloRequest(BaseModel):
     pregunta_id: int
 
@@ -54,7 +50,6 @@ class ResumenRequest(BaseModel):
     tema: str
 
 class PuntosRequest(BaseModel):
-    nombre: str
     puntos: int
 
 class RepasoCompletado(BaseModel):
@@ -70,6 +65,12 @@ class EsquemaRequest(BaseModel):
 def inicializar_datos():
     db = SessionLocal()
     try:
+        # --- 0. MIGRACIÓN LIGERA: columnas nuevas para login con Google y sesión única ---
+        db.execute(text("ALTER TABLE usuarios ADD COLUMN IF NOT EXISTS google_sub VARCHAR;"))
+        db.execute(text("ALTER TABLE usuarios ADD COLUMN IF NOT EXISTS sesion_id VARCHAR;"))
+        db.execute(text("CREATE UNIQUE INDEX IF NOT EXISTS ix_usuarios_google_sub ON usuarios (google_sub);"))
+        db.commit()
+
         # --- A. INYECTAR TEMAS Y PREGUNTAS MVP ---
         if not db.query(Tema).first():
             print("Inyectando datos de demostración para el MVP...")
@@ -162,33 +163,16 @@ def test_cors():
         "progreso": 100
     }
 
-@app.get("/api/test/generar")
-def generar_test(tema_id: int = 1, db: Session = Depends(get_db)):
-    preguntas_db = db.query(Pregunta).filter(Pregunta.tema_id == tema_id).all()
-    if len(preguntas_db) > 10:
-        preguntas_db = random.sample(preguntas_db, 10)
-
-    test_formateado = []
-    for p in preguntas_db:
-        test_formateado.append({
-            "id": p.id,
-            "pregunta": p.enunciado,
-            "opciones": [p.opcion_a, p.opcion_b, p.opcion_c, p.opcion_d],
-            "respuestaCorrecta": p.respuesta_correcta,
-            "explicacion": p.explicacion
-        })
-    return test_formateado
-
 @app.post("/api/test/fallo")
-def registrar_fallo(datos: FalloRequest, db: Session = Depends(get_db)):
-    nuevo_fallo = RegistroFallo(alumno_id=1, pregunta_id=datos.pregunta_id)
+def registrar_fallo(datos: FalloRequest, usuario: Usuario = Depends(get_current_user), db: Session = Depends(get_db)):
+    nuevo_fallo = RegistroFallo(alumno_id=usuario.id, pregunta_id=datos.pregunta_id)
     db.add(nuevo_fallo)
     db.commit()
     return {"mensaje": "Fallo guardado en el historial para el repaso automático"}
 
 @app.post("/api/ia/resumir")
-def generar_resumen_ia(datos: ResumenRequest):
-    client = genai.Client(api_key="AIzaSyBIxgqxYJCANFKdltP7w3uS8FfcxInCBcY")
+def generar_resumen_ia(datos: ResumenRequest, usuario: Usuario = Depends(get_current_user)):
+    client = genai.Client(api_key=GEMINI_API_KEY)
     prompt = f"""
     Actúa como un preparador de oposiciones experto. 
     Tu alumno tiene un nivel {datos.nivel} y dispone de solo {datos.tiempo} minutos.
@@ -206,9 +190,9 @@ def generar_resumen_ia(datos: ResumenRequest):
         return {"resumen": "Error en la conexión con la IA. Revisa la consola."}
 
 @app.post("/api/ranking/guardar")
-def guardar_puntos(datos: PuntosRequest, db: Session = Depends(get_db)):
+def guardar_puntos(datos: PuntosRequest, usuario: Usuario = Depends(get_current_user), db: Session = Depends(get_db)):
     nueva_puntuacion = Puntuacion(
-        alumno_nombre=datos.nombre, 
+        alumno_nombre=usuario.nombre,
         puntos=datos.puntos,
         fecha=datetime.now().strftime("%Y-%m-%d")
     )
@@ -221,9 +205,9 @@ def obtener_ranking(db: Session = Depends(get_db)):
     return db.query(Puntuacion).order_by(Puntuacion.puntos.desc()).limit(5).all()
 
 @app.get("/api/repaso/pendientes")
-def obtener_repasos(alumno_id: int = 1, db: Session = Depends(get_db)):
+def obtener_repasos(usuario: Usuario = Depends(get_current_user), db: Session = Depends(get_db)):
     fallos = db.query(RegistroFallo).filter(
-        RegistroFallo.alumno_id == alumno_id,
+        RegistroFallo.alumno_id == usuario.id,
         RegistroFallo.repasada == False
     ).all()
 
@@ -249,17 +233,17 @@ def obtener_repasos(alumno_id: int = 1, db: Session = Depends(get_db)):
     return preguntas_repaso
 
 @app.post("/api/repaso/completar")
-def completar_repaso(datos: RepasoCompletado, db: Session = Depends(get_db)):
+def completar_repaso(datos: RepasoCompletado, usuario: Usuario = Depends(get_current_user), db: Session = Depends(get_db)):
     fallo = db.query(RegistroFallo).filter(RegistroFallo.id == datos.fallo_id).first()
-    if fallo:
-        fallo.repasada = True
-        db.commit()
-        return {"mensaje": "¡Pregunta superada y eliminada del mazo!"}
-    return {"error": "No se encontró el fallo."}
+    if not fallo or fallo.alumno_id != usuario.id:
+        raise HTTPException(status_code=404, detail="No se encontró el fallo.")
+    fallo.repasada = True
+    db.commit()
+    return {"mensaje": "¡Pregunta superada y eliminada del mazo!"}
 
 @app.post("/api/ia/esquema")
-def generar_esquema_ia(datos: EsquemaRequest):
-    client = genai.Client(api_key="AIzaSyBIxgqxYJCANFKdltP7w3uS8FfcxInCBcY")
+def generar_esquema_ia(datos: EsquemaRequest, usuario: Usuario = Depends(get_current_user)):
+    client = genai.Client(api_key=GEMINI_API_KEY)
     prompt = f"""
     Actúa como un experto en diseño instruccional y síntesis pedagógica para oposiciones.
     Tu objetivo es transformar el tema "{datos.tema_nombre}" en un mapa mental de Mermaid.js que facilite la memoria visual.

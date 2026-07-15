@@ -1,13 +1,12 @@
 import { useState, useEffect } from 'react';
+import { apiFetch } from '../api';
 
-export default function IndicadorProgreso({ alumnoId, temaId }) {
+export default function IndicadorProgreso({ temaId }) {
     const [progreso, setProgreso] = useState(null);
     const [cargando, setCargando] = useState(true);
 
     useEffect(() => {
-        // Llamamos al endpoint que acabamos de crear en FastAPI
-        // (Asegúrate de que el puerto 8000 coincida con tu backend)
-        fetch(`https://backend-academia-kxx5.onrender.com/api/progreso/alumno/${alumnoId}/tema/${temaId}`)
+        apiFetch(`/api/progreso/tema/${temaId}`)
             .then((respuesta) => respuesta.json())
             .then((datos) => {
                 setProgreso(datos);
@@ -17,7 +16,7 @@ export default function IndicadorProgreso({ alumnoId, temaId }) {
                 console.error("Error al obtener el progreso:", error);
                 setCargando(false);
             });
-    }, [alumnoId, temaId]);
+    }, [temaId]);
 
     if (cargando) return <p>Calculando tu nivel en el tema...</p>;
     if (!progreso) return <p>Error al cargar el progreso.</p>;

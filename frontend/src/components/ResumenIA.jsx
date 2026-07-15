@@ -1,5 +1,6 @@
 import React, { useState } from 'react';
 import ReactMarkdown from 'react-markdown';
+import { apiFetch } from '../api';
 
 export default function ResumenIA() {
   // AHORA ES UN ARRAY: Guardamos los temas en una lista para permitir varios
@@ -41,10 +42,9 @@ export default function ResumenIA() {
     setResumen(''); // Limpiamos el anterior
     
     try {
-      const response = await fetch('https://backend-academia-kxx5.onrender.com/api/ia/resumir', {
+      const response = await apiFetch('/api/ia/resumir', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ 
+        body: JSON.stringify({
           tiempo: tiempo, 
           nivel: nivel,
           // Unimos todos los temas seleccionados separados por coma

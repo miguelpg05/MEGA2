@@ -2,19 +2,17 @@ import React, { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import ResumenIA from '../components/ResumenIA';
 import RankingClase from '../components/RankingClase';
+import { apiFetch } from '../api';
 
 // Componente inteligente de la tarjeta de temas
-const TopicProgressCard = ({ topicName, alumnoId, temaId }) => {
+const TopicProgressCard = ({ topicName, temaId }) => {
   const navigate = useNavigate();
-  
+
   const [progreso, setProgreso] = useState(null);
   const [cargando, setCargando] = useState(true);
 
   useEffect(() => {
-    // Si no hay alumnoId, no intentamos hacer la llamada
-    if (!alumnoId) return;
-
-    fetch(`https://backend-academia-kxx5.onrender.com/api/progreso/alumno/${alumnoId}/tema/${temaId}`)
+    apiFetch(`/api/progreso/tema/${temaId}`)
       .then((respuesta) => respuesta.json())
       .then((datos) => {
         setProgreso(datos);
@@ -24,7 +22,7 @@ const TopicProgressCard = ({ topicName, alumnoId, temaId }) => {
         console.error("Error al obtener el progreso:", error);
         setCargando(false);
       });
-  }, [alumnoId, temaId]);
+  }, [temaId]);
 
   if (cargando) {
     return (
@@ -83,13 +81,17 @@ const TopicProgressCard = ({ topicName, alumnoId, temaId }) => {
 
 export default function Dashboard() {
   const navigate = useNavigate();
-  
+
   // Rescatamos los datos reales del login desde la memoria del navegador
   const nombreUsuario = localStorage.getItem('nombre_usuario') || 'Opositor';
-  const usuarioId = localStorage.getItem('usuario_id');
 
   // Función para destruir la pulsera virtual y volver a la pantalla de acceso
-  const cerrarSesion = () => {
+  const cerrarSesion = async () => {
+    try {
+      await apiFetch('/api/auth/logout', { method: 'POST' });
+    } catch {
+      // Si ya no hay sesión válida no pasa nada, igualmente vamos a limpiar y salir
+    }
     localStorage.removeItem('token');
     localStorage.removeItem('usuario_id');
     localStorage.removeItem('nombre_usuario');
@@ -123,8 +125,8 @@ export default function Dashboard() {
             
             {/* TARJETAS DE PROGRESO POR TEMA (ID dinámico) */}
             <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-              <TopicProgressCard topicName="Tema 1: La Constitución Española" alumnoId={usuarioId} temaId={1} />
-              <TopicProgressCard topicName="Tema 2: El Gobierno y la Administración" alumnoId={usuarioId} temaId={2} />
+              <TopicProgressCard topicName="Tema 1: La Constitución Española" temaId={1} />
+              <TopicProgressCard topicName="Tema 2: El Gobierno y la Administración" temaId={2} />
             </div>
             
             <ResumenIA />

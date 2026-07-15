@@ -1,11 +1,9 @@
 import React, { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
+import { apiFetch } from '../api';
 
 export default function Repaso() {
   const navigate = useNavigate();
-  
-  // --- NUEVO: Rescatamos el ID del usuario real ---
-  const usuarioId = localStorage.getItem('usuario_id');
 
   const [flashcards, setFlashcards] = useState([]);
   const [cargando, setCargando] = useState(true);
@@ -13,10 +11,9 @@ export default function Repaso() {
   const [estadoRespuesta, setEstadoRespuesta] = useState(null);
   const [opcionSeleccionada, setOpcionSeleccionada] = useState(null);
 
-  // Cargamos los fallos pendientes de ESTE usuario al entrar
+  // Cargamos los fallos pendientes del usuario autenticado al entrar
   useEffect(() => {
-    // --- NUEVO: Usamos el usuarioId en la URL ---
-    fetch(`https://backend-academia-kxx5.onrender.com/api/repaso/pendientes?alumno_id=${usuarioId}`)
+    apiFetch('/api/repaso/pendientes')
       .then(res => res.json())
       .then(datos => {
         setFlashcards(datos);
@@ -26,23 +23,22 @@ export default function Repaso() {
         console.error("Error al cargar repasos:", error);
         setCargando(false);
       });
-  }, [usuarioId]); // Añadimos usuarioId como dependencia por seguridad
+  }, []);
 
   const comprobarRespuesta = async (opcionElegida) => {
     if (estadoRespuesta) return;
-    
+
     setOpcionSeleccionada(opcionElegida);
     const cartaActual = flashcards[indiceActual];
     const esCorrecta = opcionElegida === cartaActual.respuestaCorrecta;
-    
+
     setEstadoRespuesta(esCorrecta ? 'correcta' : 'incorrecta');
 
     // Si acierta, avisamos a FastAPI para que borre este fallo de su lista negra
     if (esCorrecta) {
       try {
-        await fetch('https://backend-academia-kxx5.onrender.com/api/repaso/completar', {
+        await apiFetch('/api/repaso/completar', {
           method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ fallo_id: cartaActual.fallo_id })
         });
       } catch (error) {
