@@ -1,16 +1,19 @@
 import os
+import json
 import secrets
+from urllib.request import urlopen
+from urllib.parse import urlencode
+from urllib.error import URLError
 from fastapi import APIRouter, Depends, HTTPException, status
 from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
 from sqlalchemy.orm import Session
-from passlib.context import CryptContext
 from jose import jwt, JWTError
 from google.oauth2 import id_token as google_id_token
 from google.auth.transport import requests as google_requests
 from datetime import datetime, timedelta
 
 from models import get_db, Usuario
-from schemas import UsuarioRegistro, UsuarioLogin, GoogleLogin, Token, UsuarioActual
+from schemas import GoogleLogin, Token, UsuarioActual
 
 router = APIRouter(prefix="/api/auth", tags=["Autenticación"])
 
@@ -46,15 +49,6 @@ def _aplicar_promocion_rol(db_user: Usuario) -> None:
     rol_entorno = _rol_por_entorno(db_user.email)
     if _NIVEL_ROL.get(rol_entorno, 0) > _NIVEL_ROL.get(db_user.rol or "alumno", 0):
         db_user.rol = rol_entorno
-
-# Encriptado de contraseñas (para el acceso por email + contraseña)
-pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
-
-def get_password_hash(password: str) -> str:
-    return pwd_context.hash(password)
-
-def verify_password(plain_password: str, hashed_password: str) -> bool:
-    return pwd_context.verify(plain_password, hashed_password)
 
 bearer_scheme = HTTPBearer(auto_error=False)
 
@@ -115,100 +109,84 @@ def _validar_dominio_academia(email: str):
             detail=f"Solo se admiten cuentas del correo de la academia (@{DOMINIO_PERMITIDO}).",
         )
 
-# El acceso admite DOS vías, ambas restringidas al dominio @academiamega.net:
-#   1) Email + contraseña (registro/login).
-#   2) Google Identity Services.
-# El rol (alumno/profesor/admin) se asigna/promociona según ADMIN_EMAILS/PROFESOR_EMAILS.
+# El acceso es EXCLUSIVAMENTE con Google, restringido al dominio @academiamega.net.
+# El frontend usa el flujo OAuth2 con selector de cuenta forzado (prompt=select_account)
+# y envía un access_token, que aquí validamos contra Google. Se mantiene compatibilidad
+# con el flujo antiguo por id_token (credential). El rol se promociona según
+# ADMIN_EMAILS/PROFESOR_EMAILS.
 
-# ENDPOINT 1: REGISTRO con email + contraseña (solo dominio de la academia)
-@router.post("/registro")
-def registrar_usuario(usuario: UsuarioRegistro, db: Session = Depends(get_db)):
-    _validar_dominio_academia(usuario.email)
+def _verificar_access_token_google(access_token: str) -> dict:
+    """Valida un access token de Google (endpoint tokeninfo) y devuelve su info.
+    Comprueba que el token fue emitido para NUESTRO client_id, evitando ataques de
+    sustitución de token (que alguien use un token válido de otra aplicación)."""
+    url = "https://oauth2.googleapis.com/tokeninfo?" + urlencode({"access_token": access_token})
+    try:
+        with urlopen(url, timeout=10) as resp:
+            info = json.loads(resp.read().decode())
+    except URLError:
+        raise HTTPException(status_code=401, detail="Token de Google inválido o caducado.")
 
-    if len(usuario.password) < 6:
-        raise HTTPException(status_code=400, detail="La contraseña debe tener al menos 6 caracteres.")
+    if info.get("aud") != GOOGLE_CLIENT_ID and info.get("azp") != GOOGLE_CLIENT_ID:
+        raise HTTPException(status_code=401, detail="Token de Google no emitido para esta aplicación.")
+    return info
 
-    db_user = db.query(Usuario).filter(Usuario.email == usuario.email).first()
-    if db_user:
-        raise HTTPException(status_code=400, detail="Este email ya está registrado")
-
-    nuevo_usuario = Usuario(
-        nombre=usuario.nombre,
-        email=usuario.email,
-        hashed_password=get_password_hash(usuario.password),
-        rol=_rol_por_entorno(usuario.email),
-    )
-    db.add(nuevo_usuario)
-    db.commit()
-    db.refresh(nuevo_usuario)
-    return {"mensaje": "Usuario creado con éxito. ¡Ya puedes iniciar sesión!"}
-
-# ENDPOINT 2: LOGIN con email + contraseña
-@router.post("/login", response_model=Token)
-def iniciar_sesion(usuario: UsuarioLogin, db: Session = Depends(get_db)):
-    db_user = db.query(Usuario).filter(Usuario.email == usuario.email).first()
-    if not db_user or not db_user.hashed_password:
-        raise HTTPException(status_code=400, detail="Email o contraseña incorrectos")
-
-    if not verify_password(usuario.password, db_user.hashed_password):
-        raise HTTPException(status_code=400, detail="Email o contraseña incorrectos")
-
-    _aplicar_promocion_rol(db_user)  # por si el email entró en ADMIN_EMAILS después de registrarse
-    sesion_id = _crear_sesion(db, db_user)
-    access_token = create_access_token(db_user.id, sesion_id)
-
-    return {
-        "access_token": access_token,
-        "token_type": "bearer",
-        "usuario_id": db_user.id,
-        "nombre": db_user.nombre,
-    }
-
-# ENDPOINT 3: LOGIN con Google (restringido al dominio de la academia)
+# ENDPOINT 1: LOGIN con Google (restringido al dominio de la academia)
 @router.post("/google", response_model=Token)
 def iniciar_sesion_google(datos: GoogleLogin, db: Session = Depends(get_db)):
     if not GOOGLE_CLIENT_ID:
         raise HTTPException(status_code=500, detail="El login con Google no está configurado en el servidor.")
 
-    try:
-        idinfo = google_id_token.verify_oauth2_token(
-            datos.credential, google_requests.Request(), GOOGLE_CLIENT_ID
-        )
-    except ValueError:
-        raise HTTPException(status_code=401, detail="Token de Google inválido o caducado.")
+    if datos.access_token:
+        # Flujo nuevo (OAuth2 con selector de cuenta)
+        info = _verificar_access_token_google(datos.access_token)
+        email = info.get("email")
+        email_verificado = str(info.get("email_verified")).lower() == "true"
+        google_sub = info.get("sub")
+        nombre = (email or "").split("@")[0]
+    elif datos.credential:
+        # Compatibilidad: flujo antiguo con id_token
+        try:
+            idinfo = google_id_token.verify_oauth2_token(
+                datos.credential, google_requests.Request(), GOOGLE_CLIENT_ID
+            )
+        except ValueError:
+            raise HTTPException(status_code=401, detail="Token de Google inválido o caducado.")
+        email = idinfo.get("email")
+        email_verificado = bool(idinfo.get("email_verified"))
+        google_sub = idinfo.get("sub")
+        nombre = idinfo.get("name") or (email or "").split("@")[0]
+    else:
+        raise HTTPException(status_code=400, detail="Falta el token de Google.")
 
-    if not idinfo.get("email_verified"):
+    if not email:
+        raise HTTPException(status_code=401, detail="No se pudo obtener el email de Google.")
+    if not email_verificado:
         raise HTTPException(status_code=401, detail="El email de Google no está verificado.")
-
-    email = idinfo["email"]
-    if idinfo.get("hd") != DOMINIO_PERMITIDO:
-        _validar_dominio_academia(email)  # comprobación de respaldo por si 'hd' no viene
-
-    rol_entorno = _rol_por_entorno(email)
+    _validar_dominio_academia(email)
 
     db_user = db.query(Usuario).filter(Usuario.email == email).first()
     if not db_user:
         db_user = Usuario(
-            nombre=idinfo.get("name") or email.split("@")[0],
+            nombre=nombre,
             email=email,
             hashed_password=None,
-            google_sub=idinfo["sub"],
-            rol=rol_entorno,
+            google_sub=google_sub,
+            rol=_rol_por_entorno(email),
         )
         db.add(db_user)
         db.commit()
         db.refresh(db_user)
     else:
-        if not db_user.google_sub:
-            db_user.google_sub = idinfo["sub"]
+        if not db_user.google_sub and google_sub:
+            db_user.google_sub = google_sub
         _aplicar_promocion_rol(db_user)  # nunca degrada un rol asignado desde el panel
         db.commit()
 
     sesion_id = _crear_sesion(db, db_user)
-    access_token = create_access_token(db_user.id, sesion_id)
+    token_sesion = create_access_token(db_user.id, sesion_id)
 
     return {
-        "access_token": access_token,
+        "access_token": token_sesion,
         "token_type": "bearer",
         "usuario_id": db_user.id,
         "nombre": db_user.nombre,
