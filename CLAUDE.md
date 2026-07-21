@@ -12,7 +12,7 @@ SaaS didáctico para una academia. Los alumnos hacen tests por temas, reciben re
 - **Backend**: FastAPI + SQLAlchemy → desplegado en **Render**.
 - **Base de datos**: PostgreSQL en **Neon**.
 - **IA**: Google Gemini (`gemini-2.5-flash`) para resúmenes y esquemas Mermaid.
-- **Auth**: **solo Google**, restringido a `@academiamega.net`. El frontend usa el flujo OAuth2 con **selector de cuenta forzado** (`prompt=select_account`) y envía un `access_token`; el backend lo valida contra `tokeninfo` (comprobando el `aud`/`azp` = nuestro client_id). La sesión se gestiona con un JWT propio + `sesion_id` (sesión única por usuario). En el front, la sesión se valida contra `/api/auth/me` vía `AuthContext`. El rol se promociona según `ADMIN_EMAILS`/`PROFESOR_EMAILS`.
+- **Auth**: dos vías, ambas restringidas a `@academiamega.net`: **email+contraseña** (registro/login) y **Google** (OAuth2 con selector de cuenta forzado `prompt=select_account`; el backend valida el `access_token` contra `tokeninfo` comprobando `aud`/`azp` = nuestro client_id). La sesión se gestiona con un JWT propio + `sesion_id` (sesión única por usuario). En el front, la sesión se valida contra `/api/auth/me` vía `AuthContext`. El rol se promociona según `ADMIN_EMAILS`/`PROFESOR_EMAILS`.
 - **Repo**: `https://github.com/miguelpg05/WebMEGA.git` (rama principal `main`).
 
 ---
@@ -98,7 +98,7 @@ Existen `.env.example` en ambas carpetas: manténlos actualizados cuando añadas
 |---|---|---|
 | **Responsive** | 🟡 Parcial | `viewport` OK y hay breakpoints `md:`/`lg:` en Dashboard. Falta auditar Test, Esquema (Mermaid), TestListado y el botón de Google (ancho fijo `336`). |
 | **Sesión única por usuario** | 🟢 Implementado | Columna `usuarios.sesion_id` + claim `sid` en el JWT; cada login regenera el `sesion_id` e invalida el resto. El front detecta el 401 y redirige con aviso. |
-| **Login Google solo @academiamega.net** | 🟢 Implementado (único método) | Flujo OAuth2 con `prompt=select_account` (sin auto-login) y `hosted_domain`. El backend valida el `access_token` con `tokeninfo` y comprueba el dominio del email. Requiere `GOOGLE_CLIENT_ID` en ambos lados. |
+| **Login Google solo @academiamega.net** | 🟢 Implementado (+ email/contraseña) | Google: OAuth2 con `prompt=select_account` (sin auto-login) + `hosted_domain`; backend valida el `access_token` con `tokeninfo`. Coexiste con email+contraseña (también restringido al dominio). Requiere `GOOGLE_CLIENT_ID` en ambos lados. |
 | **Soportar 200 concurrentes** | 🔴 Pendiente | Requiere: Neon pooled connection, pool de SQLAlchemy, workers de uvicorn/gunicorn, plan de pago en Render (el free hiberna), quitar el seed/ALTER de cada arranque. |
 
 ---
@@ -118,7 +118,7 @@ Existen `.env.example` en ambas carpetas: manténlos actualizados cuando añadas
 
 **✅ Ya resueltos:**
 - **Gestión / panel de administración**: roles `alumno`/`profesor`/`admin` (`usuarios.rol`), panel en `/admin` (solo staff) con CRUD de temas/tests/preguntas, importación CSV/XLSX, gestión de roles (solo admin) y limpieza del ranking demo. Métricas: alumnos activos (7d), progreso por tema, preguntas más falladas y uso de IA. Sentry opcional (`SENTRY_DSN`) y registro de uso de Gemini (`ia_llamadas`).
-- **Acceso solo Google** (OAuth2 con selector de cuenta forzado): restringido a `@academiamega.net`. El admin se define poniendo su correo real de Google Workspace en `ADMIN_EMAILS`. Se retiró el login/registro por email+contraseña (cerraba el agujero del registro sin verificar el buzón).
+- **Acceso email+contraseña y Google** (OAuth2 con selector de cuenta forzado): ambas vías restringidas a `@academiamega.net`. El email+contraseña permite crear un admin (vía `ADMIN_EMAILS`) sin depender de una cuenta de Google real — útil porque el 2FA obligatorio del Workspace bloqueaba la cuenta de admin. El registro por contraseña no verifica el buzón (deuda de seguridad conocida).
 - **Bug de `respuesta_correcta`**: unificado a letra canónica `A–D`. La traducción letra↔texto vive en un único sitio, `services/preguntas.py` (`texto_opcion_correcta`), usado por `main.py` (repaso) y `routers/progreso_test.py`. Tolera datos antiguos en formato texto. Cubierto por tests.
 - **`main.py` sobrecargado**: el seed se movió a `seed.py` (script idempotente, sin usuarios de ranking falsos), los modelos Pydantic a `schemas.py`, y `@app.on_event` → `lifespan`.
 - **Esquema con Alembic**: `Base.metadata.create_all` y los `ALTER TABLE` de arranque se retiraron. Ver carpeta `alembic/`.

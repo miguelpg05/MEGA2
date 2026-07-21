@@ -5,7 +5,10 @@ import { GOOGLE_CLIENT_ID } from '../config';
 import { useAuth } from '../auth/AuthContext';
 
 export default function Auth() {
+  const [esLogin, setEsLogin] = useState(true);
+  const [formData, setFormData] = useState({ nombre: '', email: '', password: '' });
   const [error, setError] = useState('');
+  const [mensaje, setMensaje] = useState('');
   const [cargando, setCargando] = useState(false);
   const navigate = useNavigate();
   const [searchParams] = useSearchParams();
@@ -27,8 +30,10 @@ export default function Auth() {
     navigate('/');
   };
 
+  // --- Login con Google (OAuth2 con selector de cuenta forzado) ---
   const enviarTokenAlBackend = async (accessToken) => {
     setError('');
+    setMensaje('');
     setCargando(true);
     try {
       const response = await apiFetch('/api/auth/google', {
@@ -45,14 +50,9 @@ export default function Auth() {
     }
   };
 
-  // Mantenemos la versión más reciente del callback sin reinicializar el cliente.
   const enviarTokenRef = useRef(enviarTokenAlBackend);
   enviarTokenRef.current = enviarTokenAlBackend;
 
-  // Inicializa el cliente OAuth2 de Google con SELECTOR DE CUENTA FORZADO.
-  // Así, al pulsar el botón, Google siempre muestra la pantalla para elegir/añadir
-  // cuenta (metiendo email+contraseña en Google), en vez de entrar automáticamente
-  // con la sesión que hubiera abierta.
   useEffect(() => {
     if (!GOOGLE_CLIENT_ID) return;
     let cancelado = false;
@@ -85,10 +85,45 @@ export default function Auth() {
 
   const iniciarGoogle = () => {
     setError('');
+    setMensaje('');
     if (tokenClientRef.current) {
       tokenClientRef.current.requestAccessToken();
     } else {
       setError('Google todavía se está cargando. Espera un momento e inténtalo de nuevo.');
+    }
+  };
+
+  // --- Login/registro con email + contraseña ---
+  const handleChange = (e) => {
+    setFormData({ ...formData, [e.target.name]: e.target.value });
+  };
+
+  const handleSubmit = async (e) => {
+    e.preventDefault();
+    setError('');
+    setMensaje('');
+    setCargando(true);
+
+    const endpoint = esLogin ? '/api/auth/login' : '/api/auth/registro';
+    const body = esLogin
+      ? { email: formData.email, password: formData.password }
+      : { nombre: formData.nombre, email: formData.email, password: formData.password };
+
+    try {
+      const response = await apiFetch(endpoint, { method: 'POST', body: JSON.stringify(body) });
+      const data = await response.json();
+      if (!response.ok) throw new Error(data.detail || 'Error en la autenticación');
+
+      if (esLogin) {
+        await guardarSesionYEntrar(data);
+      } else {
+        setMensaje('¡Cuenta creada! Ya puedes iniciar sesión.');
+        setEsLogin(true);
+      }
+    } catch (err) {
+      setError(err.message);
+    } finally {
+      setCargando(false);
     }
   };
 
@@ -98,13 +133,18 @@ export default function Auth() {
 
         <div className="text-center mb-8">
           <div className="text-5xl mb-4">🏛️</div>
-          <h2 className="text-2xl font-bold text-gray-800">Bienvenido a tu Academia</h2>
-          <p className="text-gray-500 mt-2">Accede con tu cuenta de la academia para continuar</p>
+          <h2 className="text-2xl font-bold text-gray-800">
+            {esLogin ? 'Bienvenido a tu Academia' : 'Comienza tu preparación'}
+          </h2>
+          <p className="text-gray-500 mt-2">
+            {esLogin ? 'Accede con tu cuenta de la academia' : 'Crea tu cuenta con tu correo de la academia'}
+          </p>
         </div>
 
-        {error && <div className="bg-red-50 text-red-600 p-3 rounded-xl text-sm mb-6 text-center">{error}</div>}
+        {error && <div className="bg-red-50 text-red-600 p-3 rounded-xl text-sm mb-4 text-center">{error}</div>}
+        {mensaje && <div className="bg-green-50 text-green-600 p-3 rounded-xl text-sm mb-4 text-center">{mensaje}</div>}
 
-        {GOOGLE_CLIENT_ID ? (
+        {GOOGLE_CLIENT_ID && (
           <>
             <button
               onClick={iniciarGoogle}
@@ -119,15 +159,73 @@ export default function Auth() {
               </svg>
               {cargando ? 'Entrando…' : 'Continuar con Google'}
             </button>
-            <p className="text-center text-xs text-gray-400 mt-6">
-              Solo se admiten cuentas <span className="font-medium text-gray-500">@academiamega.net</span>
-            </p>
+
+            <div className="flex items-center gap-3 my-6">
+              <div className="flex-1 h-px bg-gray-200"></div>
+              <span className="text-xs text-gray-400 uppercase tracking-wide">o con tu email</span>
+              <div className="flex-1 h-px bg-gray-200"></div>
+            </div>
           </>
-        ) : (
-          <div className="bg-amber-50 text-amber-700 p-4 rounded-xl text-sm text-center">
-            El inicio de sesión con Google no está configurado. Define <code>VITE_GOOGLE_CLIENT_ID</code> en el entorno del frontend.
-          </div>
         )}
+
+        <form onSubmit={handleSubmit} className="space-y-4">
+          {!esLogin && (
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-1">Nombre o Alias</label>
+              <input
+                type="text" name="nombre" required={!esLogin}
+                className="w-full px-4 py-3 rounded-xl bg-gray-50 border border-gray-200 focus:bg-white focus:ring-2 focus:ring-orange-500 outline-none transition-all"
+                placeholder="Ej: Opositor123"
+                value={formData.nombre}
+                onChange={handleChange}
+              />
+            </div>
+          )}
+
+          <div>
+            <label className="block text-sm font-medium text-gray-700 mb-1">Correo Electrónico</label>
+            <input
+              type="email" name="email" required
+              className="w-full px-4 py-3 rounded-xl bg-gray-50 border border-gray-200 focus:bg-white focus:ring-2 focus:ring-orange-500 outline-none transition-all"
+              placeholder="tu@academiamega.net"
+              value={formData.email}
+              onChange={handleChange}
+            />
+          </div>
+
+          <div>
+            <label className="block text-sm font-medium text-gray-700 mb-1">Contraseña</label>
+            <input
+              type="password" name="password" required
+              className="w-full px-4 py-3 rounded-xl bg-gray-50 border border-gray-200 focus:bg-white focus:ring-2 focus:ring-orange-500 outline-none transition-all"
+              placeholder="••••••••"
+              value={formData.password}
+              onChange={handleChange}
+            />
+          </div>
+
+          <button
+            type="submit"
+            disabled={cargando}
+            className="w-full bg-orange-600 text-white font-bold py-3 rounded-xl hover:bg-orange-700 transition-colors shadow-lg shadow-orange-200 mt-2 disabled:opacity-60 disabled:cursor-not-allowed"
+          >
+            {esLogin ? 'Entrar' : 'Crear mi cuenta'}
+          </button>
+        </form>
+
+        <p className="text-center text-xs text-gray-400 mt-6">
+          Solo se admiten cuentas <span className="font-medium text-gray-500">@academiamega.net</span>
+        </p>
+
+        <div className="mt-4 text-center text-sm text-gray-500">
+          {esLogin ? '¿No tienes cuenta? ' : '¿Ya tienes cuenta? '}
+          <button
+            onClick={() => { setEsLogin(!esLogin); setError(''); setMensaje(''); }}
+            className="text-orange-600 font-bold hover:underline"
+          >
+            {esLogin ? 'Regístrate aquí' : 'Inicia sesión'}
+          </button>
+        </div>
 
       </div>
     </div>

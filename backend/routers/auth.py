@@ -7,13 +7,14 @@ from urllib.error import URLError
 from fastapi import APIRouter, Depends, HTTPException, status
 from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
 from sqlalchemy.orm import Session
+from passlib.context import CryptContext
 from jose import jwt, JWTError
 from google.oauth2 import id_token as google_id_token
 from google.auth.transport import requests as google_requests
 from datetime import datetime, timedelta
 
 from models import get_db, Usuario
-from schemas import GoogleLogin, Token, UsuarioActual
+from schemas import UsuarioRegistro, UsuarioLogin, GoogleLogin, Token, UsuarioActual
 
 router = APIRouter(prefix="/api/auth", tags=["Autenticación"])
 
@@ -49,6 +50,15 @@ def _aplicar_promocion_rol(db_user: Usuario) -> None:
     rol_entorno = _rol_por_entorno(db_user.email)
     if _NIVEL_ROL.get(rol_entorno, 0) > _NIVEL_ROL.get(db_user.rol or "alumno", 0):
         db_user.rol = rol_entorno
+
+# Encriptado de contraseñas (para el acceso por email + contraseña)
+pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
+
+def get_password_hash(password: str) -> str:
+    return pwd_context.hash(password)
+
+def verify_password(plain_password: str, hashed_password: str) -> bool:
+    return pwd_context.verify(plain_password, hashed_password)
 
 bearer_scheme = HTTPBearer(auto_error=False)
 
@@ -109,11 +119,54 @@ def _validar_dominio_academia(email: str):
             detail=f"Solo se admiten cuentas del correo de la academia (@{DOMINIO_PERMITIDO}).",
         )
 
-# El acceso es EXCLUSIVAMENTE con Google, restringido al dominio @academiamega.net.
-# El frontend usa el flujo OAuth2 con selector de cuenta forzado (prompt=select_account)
-# y envía un access_token, que aquí validamos contra Google. Se mantiene compatibilidad
-# con el flujo antiguo por id_token (credential). El rol se promociona según
-# ADMIN_EMAILS/PROFESOR_EMAILS.
+# El acceso admite DOS vías, ambas restringidas al dominio @academiamega.net:
+#   1) Email + contraseña (registro/login).
+#   2) Google (OAuth2 con selector de cuenta forzado; el backend valida el access_token).
+# El rol (alumno/profesor/admin) se asigna/promociona según ADMIN_EMAILS/PROFESOR_EMAILS.
+
+# ENDPOINT: REGISTRO con email + contraseña (solo dominio de la academia)
+@router.post("/registro")
+def registrar_usuario(usuario: UsuarioRegistro, db: Session = Depends(get_db)):
+    _validar_dominio_academia(usuario.email)
+
+    if len(usuario.password) < 6:
+        raise HTTPException(status_code=400, detail="La contraseña debe tener al menos 6 caracteres.")
+
+    db_user = db.query(Usuario).filter(Usuario.email == usuario.email).first()
+    if db_user:
+        raise HTTPException(status_code=400, detail="Este email ya está registrado")
+
+    nuevo_usuario = Usuario(
+        nombre=usuario.nombre,
+        email=usuario.email,
+        hashed_password=get_password_hash(usuario.password),
+        rol=_rol_por_entorno(usuario.email),
+    )
+    db.add(nuevo_usuario)
+    db.commit()
+    db.refresh(nuevo_usuario)
+    return {"mensaje": "Usuario creado con éxito. ¡Ya puedes iniciar sesión!"}
+
+# ENDPOINT: LOGIN con email + contraseña
+@router.post("/login", response_model=Token)
+def iniciar_sesion(usuario: UsuarioLogin, db: Session = Depends(get_db)):
+    db_user = db.query(Usuario).filter(Usuario.email == usuario.email).first()
+    if not db_user or not db_user.hashed_password:
+        raise HTTPException(status_code=400, detail="Email o contraseña incorrectos")
+
+    if not verify_password(usuario.password, db_user.hashed_password):
+        raise HTTPException(status_code=400, detail="Email o contraseña incorrectos")
+
+    _aplicar_promocion_rol(db_user)  # por si el email entró en ADMIN_EMAILS tras registrarse
+    sesion_id = _crear_sesion(db, db_user)
+    token_sesion = create_access_token(db_user.id, sesion_id)
+
+    return {
+        "access_token": token_sesion,
+        "token_type": "bearer",
+        "usuario_id": db_user.id,
+        "nombre": db_user.nombre,
+    }
 
 def _verificar_access_token_google(access_token: str) -> dict:
     """Valida un access token de Google (endpoint tokeninfo) y devuelve su info.

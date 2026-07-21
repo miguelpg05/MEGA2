@@ -14,9 +14,17 @@ class TestResultado(BaseModel):
 
 # --- ESQUEMAS PARA AUTENTICACIÓN ---
 
-# El acceso es solo con Google (ver routers/auth.py).
+class UsuarioRegistro(BaseModel):
+    nombre: str
+    email: str
+    password: str
+
+class UsuarioLogin(BaseModel):
+    email: str
+    password: str
+
 class GoogleLogin(BaseModel):
-    access_token: Optional[str] = None  # OAuth2 access token (flujo nuevo con selector de cuenta)
+    access_token: Optional[str] = None  # OAuth2 access token (flujo con selector de cuenta)
     credential: Optional[str] = None    # id_token (flujo antiguo, por compatibilidad)
 
 class Token(BaseModel):
