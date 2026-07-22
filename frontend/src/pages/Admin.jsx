@@ -4,6 +4,13 @@ import { apiJson } from '../api';
 import { Cargando, MensajeError } from '../components/Estado';
 import { useAuth } from '../auth/AuthContext';
 
+// Etiquetas legibles de los roles
+const ETIQUETA_ROL = {
+  estudiante: 'Estudiante',
+  admin: 'Administrador (profesor)',
+  superadmin: 'Superadministrador',
+};
+
 // Tarjeta de métrica (a nivel de módulo para no recrearla en cada render)
 function MetricaCard({ titulo, valor, sub }) {
   return (
@@ -37,10 +44,16 @@ function MetricasSection() {
   return (
     <div className="space-y-8">
       <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
-        <MetricaCard titulo="Usuarios totales" valor={datos.usuarios_total} />
-        <MetricaCard titulo="Alumnos" valor={datos.alumnos_total} />
-        <MetricaCard titulo="Alumnos activos (7d)" valor={datos.alumnos_activos_7d} />
-        <MetricaCard titulo="Llamadas IA (total)" valor={datos.ia.total} sub={`Hoy: ${datos.ia.hoy} · 7d: ${datos.ia.ultimos_7d} · ${datos.ia.tokens_totales} tokens`} />
+        <MetricaCard titulo="Usuarios" valor={datos.usuarios_total} />
+        <MetricaCard titulo="Estudiantes" valor={datos.alumnos_total} />
+        <MetricaCard titulo="Activos (7d)" valor={datos.alumnos_activos_7d} />
+        {datos.ia && (
+          <MetricaCard
+            titulo="Llamadas IA"
+            valor={datos.ia.total}
+            sub={`Hoy: ${datos.ia.hoy} · 7d: ${datos.ia.ultimos_7d} · ${datos.ia.tokens_totales} tokens`}
+          />
+        )}
       </div>
 
       <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
@@ -86,19 +99,19 @@ function MetricasSection() {
 }
 
 // ==========================================
-// Sección: TEMAS
+// Sección: CURSOS (solo superadmin)
 // ==========================================
-function TemasSection() {
-  const [temas, setTemas] = useState([]);
+function CursosSection() {
+  const [cursos, setCursos] = useState([]);
   const [cargando, setCargando] = useState(true);
   const [error, setError] = useState(false);
   const [nombre, setNombre] = useState('');
-  const [bloque, setBloque] = useState('');
+  const [descripcion, setDescripcion] = useState('');
   const [aviso, setAviso] = useState('');
 
   const cargar = useCallback(() => {
-    apiJson('/api/admin/temas')
-      .then((d) => { setTemas(d); setError(false); setCargando(false); })
+    apiJson('/api/admin/cursos')
+      .then((d) => { setCursos(d); setError(false); setCargando(false); })
       .catch(() => { setError(true); setCargando(false); });
   }, []);
   useEffect(() => { cargar(); }, [cargar]);
@@ -108,8 +121,78 @@ function TemasSection() {
     e.preventDefault();
     setAviso('');
     try {
-      await apiJson('/api/admin/temas', { method: 'POST', body: JSON.stringify({ nombre, bloque }) });
-      setNombre(''); setBloque('');
+      await apiJson('/api/admin/cursos', { method: 'POST', body: JSON.stringify({ nombre, descripcion }) });
+      setNombre(''); setDescripcion('');
+      cargar();
+    } catch (err) { setAviso(err.message); }
+  };
+
+  const borrar = async (id) => {
+    if (!window.confirm('¿Eliminar este curso?')) return;
+    try { await apiJson(`/api/admin/cursos/${id}`, { method: 'DELETE' }); cargar(); }
+    catch (err) { setAviso(err.message); }
+  };
+
+  if (cargando) return <Cargando texto="Cargando cursos..." className="py-12" />;
+  if (error) return <MensajeError texto="No se pudieron cargar los cursos." onReintentar={reintentar} />;
+
+  return (
+    <div className="space-y-6">
+      <form onSubmit={crear} className="bg-white border border-gray-100 rounded-2xl p-5 shadow-sm flex flex-col sm:flex-row gap-3">
+        <input value={nombre} onChange={(e) => setNombre(e.target.value)} required placeholder="Nombre del curso (ej. Auxiliar Administrativo)"
+          className="flex-1 px-4 py-2 rounded-xl bg-gray-50 border border-gray-200 outline-none focus:ring-2 focus:ring-orange-500" />
+        <input value={descripcion} onChange={(e) => setDescripcion(e.target.value)} placeholder="Descripción (opcional)"
+          className="flex-1 px-4 py-2 rounded-xl bg-gray-50 border border-gray-200 outline-none focus:ring-2 focus:ring-orange-500" />
+        <button className="px-5 py-2 bg-orange-500 hover:bg-orange-600 text-white font-medium rounded-xl cursor-pointer">Crear curso</button>
+      </form>
+      {aviso && <p className="text-sm text-red-600">{aviso}</p>}
+
+      <div className="bg-white border border-gray-100 rounded-2xl shadow-sm divide-y divide-gray-100">
+        {cursos.length === 0 ? <p className="p-5 text-sm text-gray-400">No hay cursos todavía. Crea el primero arriba.</p> :
+          cursos.map((c) => (
+            <div key={c.id} className="p-4 flex justify-between items-center gap-3">
+              <div className="min-w-0">
+                <p className="font-medium text-gray-800 truncate">{c.nombre}</p>
+                <p className="text-xs text-gray-400 truncate">ID {c.id}{c.descripcion ? ` · ${c.descripcion}` : ''}</p>
+              </div>
+              <button onClick={() => borrar(c.id)} className="shrink-0 text-sm text-red-600 hover:bg-red-50 px-3 py-1.5 rounded-lg cursor-pointer">Eliminar</button>
+            </div>
+          ))}
+      </div>
+    </div>
+  );
+}
+
+// ==========================================
+// Sección: TEMAS (con curso)
+// ==========================================
+function TemasSection() {
+  const [temas, setTemas] = useState([]);
+  const [cursos, setCursos] = useState([]);
+  const [cargando, setCargando] = useState(true);
+  const [error, setError] = useState(false);
+  const [nombre, setNombre] = useState('');
+  const [bloque, setBloque] = useState('');
+  const [cursoId, setCursoId] = useState('');
+  const [aviso, setAviso] = useState('');
+
+  const cargar = useCallback(() => {
+    Promise.all([apiJson('/api/admin/temas'), apiJson('/api/admin/cursos')])
+      .then(([t, c]) => { setTemas(t); setCursos(c); setError(false); setCargando(false); })
+      .catch(() => { setError(true); setCargando(false); });
+  }, []);
+  useEffect(() => { cargar(); }, [cargar]);
+  const reintentar = () => { setCargando(true); setError(false); cargar(); };
+
+  const crear = async (e) => {
+    e.preventDefault();
+    setAviso('');
+    try {
+      await apiJson('/api/admin/temas', {
+        method: 'POST',
+        body: JSON.stringify({ nombre, bloque, curso_id: cursoId ? Number(cursoId) : null }),
+      });
+      setNombre(''); setBloque(''); setCursoId('');
       cargar();
     } catch (err) { setAviso(err.message); }
   };
@@ -123,13 +206,26 @@ function TemasSection() {
   if (cargando) return <Cargando texto="Cargando temas..." className="py-12" />;
   if (error) return <MensajeError texto="No se pudieron cargar los temas." onReintentar={reintentar} />;
 
+  const nombreCurso = (id) => cursos.find((c) => c.id === id)?.nombre || 'Sin curso';
+
   return (
     <div className="space-y-6">
-      <form onSubmit={crear} className="bg-white border border-gray-100 rounded-2xl p-5 shadow-sm flex flex-col sm:flex-row gap-3">
+      {cursos.length === 0 && (
+        <p className="text-sm text-amber-700 bg-amber-50 p-3 rounded-xl">
+          No tienes ningún curso asignado. Los temas deben pertenecer a un curso.
+        </p>
+      )}
+
+      <form onSubmit={crear} className="bg-white border border-gray-100 rounded-2xl p-5 shadow-sm grid grid-cols-1 sm:grid-cols-4 gap-3">
         <input value={nombre} onChange={(e) => setNombre(e.target.value)} required placeholder="Nombre del tema"
-          className="flex-1 px-4 py-2 rounded-xl bg-gray-50 border border-gray-200 outline-none focus:ring-2 focus:ring-orange-500" />
+          className="px-4 py-2 rounded-xl bg-gray-50 border border-gray-200 outline-none focus:ring-2 focus:ring-orange-500" />
         <input value={bloque} onChange={(e) => setBloque(e.target.value)} placeholder="Bloque (opcional)"
-          className="flex-1 px-4 py-2 rounded-xl bg-gray-50 border border-gray-200 outline-none focus:ring-2 focus:ring-orange-500" />
+          className="px-4 py-2 rounded-xl bg-gray-50 border border-gray-200 outline-none focus:ring-2 focus:ring-orange-500" />
+        <select value={cursoId} onChange={(e) => setCursoId(e.target.value)} required
+          className="px-4 py-2 rounded-xl bg-gray-50 border border-gray-200 outline-none focus:ring-2 focus:ring-orange-500">
+          <option value="">Curso…</option>
+          {cursos.map((c) => <option key={c.id} value={c.id}>{c.nombre}</option>)}
+        </select>
         <button className="px-5 py-2 bg-orange-500 hover:bg-orange-600 text-white font-medium rounded-xl cursor-pointer">Crear tema</button>
       </form>
       {aviso && <p className="text-sm text-red-600">{aviso}</p>}
@@ -138,11 +234,13 @@ function TemasSection() {
         {temas.length === 0 ? <p className="p-5 text-sm text-gray-400">No hay temas.</p> :
           temas.map((t) => (
             <div key={t.id} className="p-4 flex justify-between items-center gap-3">
-              <div>
-                <p className="font-medium text-gray-800">{t.nombre}</p>
-                <p className="text-xs text-gray-400">ID {t.id} · {t.bloque || 'Sin bloque'}</p>
+              <div className="min-w-0">
+                <p className="font-medium text-gray-800 truncate">{t.nombre}</p>
+                <p className="text-xs text-gray-400 truncate">
+                  ID {t.id} · {nombreCurso(t.curso_id)}{t.bloque ? ` · ${t.bloque}` : ''}
+                </p>
               </div>
-              <button onClick={() => borrar(t.id)} className="text-sm text-red-600 hover:bg-red-50 px-3 py-1.5 rounded-lg cursor-pointer">Eliminar</button>
+              <button onClick={() => borrar(t.id)} className="shrink-0 text-sm text-red-600 hover:bg-red-50 px-3 py-1.5 rounded-lg cursor-pointer">Eliminar</button>
             </div>
           ))}
       </div>
@@ -212,11 +310,11 @@ function TestsSection() {
         {tests.length === 0 ? <p className="p-5 text-sm text-gray-400">No hay tests.</p> :
           tests.map((t) => (
             <div key={t.id} className="p-4 flex justify-between items-center gap-3">
-              <div>
+              <div className="min-w-0">
                 <p className="font-medium text-gray-800">Test {t.numero_test}</p>
-                <p className="text-xs text-gray-400">ID {t.id} · {nombreTema(t.tema_id)}</p>
+                <p className="text-xs text-gray-400 truncate">ID {t.id} · {nombreTema(t.tema_id)}</p>
               </div>
-              <button onClick={() => borrar(t.id)} className="text-sm text-red-600 hover:bg-red-50 px-3 py-1.5 rounded-lg cursor-pointer">Eliminar</button>
+              <button onClick={() => borrar(t.id)} className="shrink-0 text-sm text-red-600 hover:bg-red-50 px-3 py-1.5 rounded-lg cursor-pointer">Eliminar</button>
             </div>
           ))}
       </div>
@@ -303,7 +401,7 @@ function PreguntasSection() {
         <select value={testId} onChange={(e) => seleccionarTest(e.target.value)}
           className="flex-1 px-4 py-2 rounded-xl bg-gray-50 border border-gray-200 outline-none focus:ring-2 focus:ring-orange-500">
           <option value="">Selecciona un test…</option>
-          {tests.map((t) => <option key={t.id} value={t.id}>Test {t.numero_test} (tema {t.tema_id})</option>)}
+          {tests.map((t) => <option key={t.id} value={t.id}>Test {t.numero_test}</option>)}
         </select>
         <label className="text-sm text-gray-600 cursor-pointer bg-gray-100 hover:bg-gray-200 px-4 py-2 rounded-xl">
           Importar CSV/XLSX
@@ -354,17 +452,18 @@ function PreguntasSection() {
 }
 
 // ==========================================
-// Sección: USUARIOS (solo admin)
+// Sección: USUARIOS (solo superadmin)
 // ==========================================
 function UsuariosSection() {
   const [usuarios, setUsuarios] = useState([]);
+  const [cursos, setCursos] = useState([]);
   const [cargando, setCargando] = useState(true);
   const [error, setError] = useState(false);
   const [aviso, setAviso] = useState('');
 
   const cargar = useCallback(() => {
-    apiJson('/api/admin/usuarios')
-      .then((d) => { setUsuarios(d); setError(false); setCargando(false); })
+    Promise.all([apiJson('/api/admin/usuarios'), apiJson('/api/admin/cursos')])
+      .then(([u, c]) => { setUsuarios(u); setCursos(c); setError(false); setCargando(false); })
       .catch(() => { setError(true); setCargando(false); });
   }, []);
   useEffect(() => { cargar(); }, [cargar]);
@@ -372,10 +471,15 @@ function UsuariosSection() {
 
   const cambiarRol = async (id, rol) => {
     setAviso('');
-    try {
-      await apiJson(`/api/admin/usuarios/${id}/rol`, { method: 'PUT', body: JSON.stringify({ rol }) });
-      cargar();
-    } catch (err) { setAviso(err.message); }
+    try { await apiJson(`/api/admin/usuarios/${id}/rol`, { method: 'PUT', body: JSON.stringify({ rol }) }); cargar(); }
+    catch (err) { setAviso(err.message); }
+  };
+
+  const cambiarCursos = async (id, seleccion) => {
+    setAviso('');
+    const curso_ids = Array.from(seleccion).map((o) => Number(o.value));
+    try { await apiJson(`/api/admin/usuarios/${id}/cursos`, { method: 'PUT', body: JSON.stringify({ curso_ids }) }); cargar(); }
+    catch (err) { setAviso(err.message); }
   };
 
   if (cargando) return <Cargando texto="Cargando usuarios..." className="py-12" />;
@@ -383,20 +487,39 @@ function UsuariosSection() {
 
   return (
     <div className="space-y-4">
+      <p className="text-sm text-gray-500">
+        Los cursos son los que un <strong>administrador</strong> gestiona, o en los que un <strong>estudiante</strong> está matriculado.
+        El <strong>superadministrador</strong> accede a todos sin asignación.
+      </p>
       {aviso && <p className="text-sm text-red-600">{aviso}</p>}
+
       <div className="bg-white border border-gray-100 rounded-2xl shadow-sm divide-y divide-gray-100">
         {usuarios.map((u) => (
-          <div key={u.id} className="p-4 flex justify-between items-center gap-3">
-            <div className="min-w-0">
+          <div key={u.id} className="p-4 flex flex-col lg:flex-row lg:items-center gap-3">
+            <div className="min-w-0 flex-1">
               <p className="font-medium text-gray-800 truncate">{u.nombre}</p>
               <p className="text-xs text-gray-400 truncate">{u.email}</p>
             </div>
+
             <select value={u.rol} onChange={(e) => cambiarRol(u.id, e.target.value)}
               className="px-3 py-1.5 rounded-lg bg-gray-50 border border-gray-200 text-sm outline-none focus:ring-2 focus:ring-orange-500">
-              <option value="alumno">Alumno</option>
-              <option value="profesor">Profesor</option>
-              <option value="admin">Admin</option>
+              {Object.entries(ETIQUETA_ROL).map(([valor, etiqueta]) => (
+                <option key={valor} value={valor}>{etiqueta}</option>
+              ))}
             </select>
+
+            {u.rol !== 'superadmin' && (
+              <select
+                multiple
+                value={u.cursos.map((c) => String(c.id))}
+                onChange={(e) => cambiarCursos(u.id, e.target.selectedOptions)}
+                title="Ctrl/Cmd + clic para seleccionar varios"
+                className="px-3 py-1.5 rounded-lg bg-gray-50 border border-gray-200 text-sm outline-none focus:ring-2 focus:ring-orange-500 min-w-[12rem]"
+                size={Math.min(Math.max(cursos.length, 2), 4)}
+              >
+                {cursos.map((c) => <option key={c.id} value={c.id}>{c.nombre}</option>)}
+              </select>
+            )}
           </div>
         ))}
       </div>
@@ -407,7 +530,7 @@ function UsuariosSection() {
 // ==========================================
 // Sección: RANKING
 // ==========================================
-function RankingSection({ esAdmin }) {
+function RankingSection({ esSuperadmin }) {
   const [aviso, setAviso] = useState('');
 
   const accion = async (path, confirmar) => {
@@ -424,7 +547,7 @@ function RankingSection({ esAdmin }) {
         className="w-full py-2.5 bg-orange-500 hover:bg-orange-600 text-white font-medium rounded-xl cursor-pointer">
         Eliminar puntuaciones de demostración
       </button>
-      {esAdmin && (
+      {esSuperadmin && (
         <button onClick={() => accion('/api/admin/ranking/reset', '¿Reiniciar TODO el ranking? Esto borra todas las puntuaciones.')}
           className="w-full py-2.5 bg-red-50 text-red-600 hover:bg-red-100 font-medium rounded-xl cursor-pointer">
           Reiniciar ranking completo
@@ -441,22 +564,36 @@ function RankingSection({ esAdmin }) {
 export default function Admin() {
   const navigate = useNavigate();
   const { usuario } = useAuth();
-  const esAdmin = usuario?.rol === 'admin';
+  const esSuperadmin = usuario?.rol === 'superadmin';
 
-  const tabsBase = ['Métricas', 'Temas', 'Tests', 'Preguntas', 'Ranking'];
-  const tabs = esAdmin ? ['Métricas', 'Temas', 'Tests', 'Preguntas', 'Usuarios', 'Ranking'] : tabsBase;
+  const tabs = esSuperadmin
+    ? ['Métricas', 'Cursos', 'Temas', 'Tests', 'Preguntas', 'Usuarios', 'Ranking']
+    : ['Métricas', 'Temas', 'Tests', 'Preguntas', 'Ranking'];
   const [tab, setTab] = useState('Métricas');
+
+  const misCursos = usuario?.cursos || [];
 
   return (
     <div className="min-h-screen bg-gray-50 p-4 sm:p-6 lg:p-8 font-sans">
       <div className="max-w-5xl mx-auto">
         <header className="mb-6 flex flex-wrap justify-between items-center gap-3">
           <div>
-            <h1 className="text-2xl sm:text-3xl font-light text-gray-900">Panel de <span className="font-semibold text-orange-500">administración</span></h1>
-            <p className="text-gray-500 text-sm mt-1">Conectado como {usuario?.nombre} · {usuario?.rol}</p>
+            <h1 className="text-2xl sm:text-3xl font-light text-gray-900">
+              Panel de <span className="font-semibold text-orange-500">administración</span>
+            </h1>
+            <p className="text-gray-500 text-sm mt-1">
+              {usuario?.nombre} · {ETIQUETA_ROL[usuario?.rol] || usuario?.rol}
+              {!esSuperadmin && misCursos.length > 0 && ` · ${misCursos.map((c) => c.nombre).join(', ')}`}
+            </p>
           </div>
           <button onClick={() => navigate('/')} className="text-sm bg-gray-100 text-gray-600 px-4 py-2 rounded-xl hover:bg-gray-200 cursor-pointer">← Volver</button>
         </header>
+
+        {!esSuperadmin && misCursos.length === 0 && (
+          <div className="mb-6 bg-amber-50 text-amber-700 p-4 rounded-xl text-sm">
+            Todavía no tienes cursos asignados. Pide a un superadministrador que te asigne los tuyos para poder gestionar su temario.
+          </div>
+        )}
 
         <nav className="flex flex-wrap gap-2 mb-6">
           {tabs.map((t) => (
@@ -468,11 +605,12 @@ export default function Admin() {
         </nav>
 
         {tab === 'Métricas' && <MetricasSection />}
+        {tab === 'Cursos' && esSuperadmin && <CursosSection />}
         {tab === 'Temas' && <TemasSection />}
         {tab === 'Tests' && <TestsSection />}
         {tab === 'Preguntas' && <PreguntasSection />}
-        {tab === 'Usuarios' && esAdmin && <UsuariosSection />}
-        {tab === 'Ranking' && <RankingSection esAdmin={esAdmin} />}
+        {tab === 'Usuarios' && esSuperadmin && <UsuariosSection />}
+        {tab === 'Ranking' && <RankingSection esSuperadmin={esSuperadmin} />}
       </div>
     </div>
   );

@@ -34,7 +34,7 @@ function RutaProtegida({ children }) {
   return children;
 }
 
-// Guardián para el panel de administración: exige rol profesor o admin.
+// Guardián para el panel de administración: exige rol admin (profesor) o superadmin.
 function RutaStaff({ children }) {
   const token = localStorage.getItem('token');
   const { usuario, cargando } = useAuth();
@@ -48,7 +48,7 @@ function RutaStaff({ children }) {
   if (!usuario) {
     return <Navigate to="/login" replace />;
   }
-  if (usuario.rol !== 'profesor' && usuario.rol !== 'admin') {
+  if (usuario.rol !== 'admin' && usuario.rol !== 'superadmin') {
     return <Navigate to="/" replace />;
   }
   return children;

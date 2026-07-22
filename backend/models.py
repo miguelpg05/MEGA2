@@ -1,6 +1,6 @@
 import os
 from dotenv import load_dotenv
-from sqlalchemy import create_engine, Column, Integer, String, Boolean, ForeignKey, DateTime
+from sqlalchemy import create_engine, Column, Integer, String, Boolean, ForeignKey, DateTime, Table
 from sqlalchemy.orm import declarative_base, relationship, sessionmaker
 from datetime import datetime
 
@@ -26,6 +26,28 @@ def get_db():
     finally:
         db.close()
 
+# 0. Cursos (p. ej. "Auxiliar Administrativo del Estado", "Policía Nacional").
+# Todo el temario cuelga de un curso, y los usuarios se vinculan a cursos:
+#   - "admin" (profesor): los cursos que GESTIONA
+#   - "estudiante": los cursos en los que está MATRICULADO
+#   - "superadmin": no necesita vínculos, tiene acceso a todos
+class Curso(Base):
+    __tablename__ = "cursos"
+
+    id = Column(Integer, primary_key=True, index=True)
+    nombre = Column(String, nullable=False, index=True)
+    descripcion = Column(String, nullable=True)
+
+    temas = relationship("Tema", back_populates="curso")
+
+# Tabla intermedia usuario <-> curso (muchos a muchos)
+usuario_cursos = Table(
+    "usuario_cursos",
+    Base.metadata,
+    Column("usuario_id", Integer, ForeignKey("usuarios.id", ondelete="CASCADE"), primary_key=True),
+    Column("curso_id", Integer, ForeignKey("cursos.id", ondelete="CASCADE"), primary_key=True),
+)
+
 # 1. Tabla de Temas y Bloques
 class Tema(Base):
     __tablename__ = "temas"
@@ -33,7 +55,9 @@ class Tema(Base):
     id = Column(Integer, primary_key=True, index=True)
     nombre = Column(String, index=True)
     bloque = Column(String) # Ej: "Derecho Constitucional", "Derecho Administrativo"
-    
+    curso_id = Column(Integer, ForeignKey("cursos.id"), nullable=True, index=True)
+
+    curso = relationship("Curso", back_populates="temas")
     # Relación: Un tema tiene muchas preguntas
     preguntas = relationship("Pregunta", back_populates="tema")
 
@@ -96,7 +120,11 @@ class Usuario(Base):
     hashed_password = Column(String, nullable=True) # Histórico: usuarios antiguos con contraseña (ya solo se entra con Google)
     google_sub = Column(String, unique=True, index=True, nullable=True) # ID único de Google (idinfo['sub'])
     sesion_id = Column(String, nullable=True) # Token de la sesión activa actual; cada login lo renueva e invalida el resto
-    rol = Column(String, nullable=False, default="alumno") # "alumno" | "profesor" | "admin"
+    # "estudiante" | "admin" (profesor: solo sus cursos) | "superadmin" (jefe: todos los cursos)
+    rol = Column(String, nullable=False, default="estudiante")
+
+    # Cursos que gestiona (si es admin) o en los que está matriculado (si es estudiante)
+    cursos = relationship("Curso", secondary=usuario_cursos, backref="usuarios")
 
 # --- TABLAS PARA EL LISTADO DE TESTS ESPECÍFICOS ---
 

@@ -33,11 +33,16 @@ class Token(BaseModel):
     usuario_id: int
     nombre: str
 
+class CursoResumen(BaseModel):
+    id: int
+    nombre: str
+
 class UsuarioActual(BaseModel):
     usuario_id: int
     nombre: str
     email: str
     rol: str
+    cursos: List[CursoResumen] = []
 
 # --- ESQUEMAS DE PETICIÓN PARA LOS ENDPOINTS DE main.py ---
 
@@ -60,9 +65,17 @@ class EsquemaRequest(BaseModel):
 
 # --- ESQUEMAS DEL PANEL DE ADMINISTRACIÓN ---
 
+class CursoIn(BaseModel):
+    nombre: str
+    descripcion: Optional[str] = None
+
+class CursosUsuarioUpdate(BaseModel):
+    curso_ids: List[int]
+
 class TemaIn(BaseModel):
     nombre: str
     bloque: Optional[str] = None
+    curso_id: Optional[int] = None
 
 class TestPlantillaIn(BaseModel):
     numero_test: str
@@ -81,4 +94,4 @@ class PreguntaIn(BaseModel):
     test_plantilla_id: Optional[int] = None
 
 class RolUpdate(BaseModel):
-    rol: str  # "alumno" | "profesor" | "admin"
+    rol: str  # "estudiante" | "admin" (profesor) | "superadmin" (jefe)

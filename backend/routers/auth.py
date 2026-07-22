@@ -34,21 +34,30 @@ def _parse_emails(valor):
 ADMIN_EMAILS = _parse_emails(os.getenv("ADMIN_EMAILS"))
 PROFESOR_EMAILS = _parse_emails(os.getenv("PROFESOR_EMAILS"))
 
-_NIVEL_ROL = {"alumno": 0, "profesor": 1, "admin": 2}
+# Roles por alcance:
+#   estudiante  -> solo los cursos en los que está matriculado
+#   admin       -> profesor: gestiona SOLO los cursos que tiene asignados
+#   superadmin  -> jefe de la academia: acceso total a todos los cursos
+ROL_ESTUDIANTE = "estudiante"
+ROL_ADMIN = "admin"
+ROL_SUPERADMIN = "superadmin"
+ROLES_VALIDOS = (ROL_ESTUDIANTE, ROL_ADMIN, ROL_SUPERADMIN)
+
+_NIVEL_ROL = {ROL_ESTUDIANTE: 0, ROL_ADMIN: 1, ROL_SUPERADMIN: 2}
 
 def _rol_por_entorno(email: str) -> str:
     e = email.lower()
-    if e in ADMIN_EMAILS:
-        return "admin"
-    if e in PROFESOR_EMAILS:
-        return "profesor"
-    return "alumno"
+    if e in ADMIN_EMAILS:        # jefes de la academia
+        return ROL_SUPERADMIN
+    if e in PROFESOR_EMAILS:     # profesores
+        return ROL_ADMIN
+    return ROL_ESTUDIANTE
 
 def _aplicar_promocion_rol(db_user: Usuario) -> None:
     """Promociona el rol del usuario según ADMIN_EMAILS/PROFESOR_EMAILS.
     Nunca degrada un rol asignado manualmente desde el panel."""
     rol_entorno = _rol_por_entorno(db_user.email)
-    if _NIVEL_ROL.get(rol_entorno, 0) > _NIVEL_ROL.get(db_user.rol or "alumno", 0):
+    if _NIVEL_ROL.get(rol_entorno, 0) > _NIVEL_ROL.get(db_user.rol or ROL_ESTUDIANTE, 0):
         db_user.rol = rol_entorno
 
 # Encriptado de contraseñas (para el acceso por email + contraseña)
@@ -100,17 +109,38 @@ def get_current_user(
         )
     return usuario
 
-def require_staff(usuario: Usuario = Depends(get_current_user)) -> Usuario:
-    """Permite el paso solo a profesores y administradores (gestión de contenido y métricas)."""
-    if usuario.rol not in ("profesor", "admin"):
-        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Requiere rol de profesor o administrador.")
-    return usuario
+def es_superadmin(usuario: Usuario) -> bool:
+    return usuario.rol == ROL_SUPERADMIN
 
-def require_admin(usuario: Usuario = Depends(get_current_user)) -> Usuario:
-    """Permite el paso solo a administradores (gestión de usuarios/roles)."""
-    if usuario.rol != "admin":
+def require_gestor(usuario: Usuario = Depends(get_current_user)) -> Usuario:
+    """Gestión de contenido: administradores (profesores) y superadministradores.
+    El alcance por curso se comprueba después con `verificar_acceso_curso`."""
+    if usuario.rol not in (ROL_ADMIN, ROL_SUPERADMIN):
         raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Requiere rol de administrador.")
     return usuario
+
+def require_superadmin(usuario: Usuario = Depends(get_current_user)) -> Usuario:
+    """Solo superadministradores: gestión de cursos, usuarios y roles."""
+    if usuario.rol != ROL_SUPERADMIN:
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Requiere rol de superadministrador.")
+    return usuario
+
+def cursos_permitidos_ids(usuario: Usuario):
+    """IDs de los cursos a los que el usuario tiene acceso.
+    Devuelve None si es superadmin (acceso a TODOS los cursos)."""
+    if es_superadmin(usuario):
+        return None
+    return [c.id for c in usuario.cursos]
+
+def verificar_acceso_curso(usuario: Usuario, curso_id) -> None:
+    """Lanza 403 si el usuario no puede gestionar ese curso."""
+    if es_superadmin(usuario):
+        return
+    if curso_id is None or curso_id not in [c.id for c in usuario.cursos]:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="No tienes acceso a este curso.",
+        )
 
 def _validar_dominio_academia(email: str):
     if not email.lower().endswith(f"@{DOMINIO_PERMITIDO}"):
@@ -248,7 +278,13 @@ def iniciar_sesion_google(datos: GoogleLogin, db: Session = Depends(get_db)):
 # ENDPOINT 4: Quién soy (para que el frontend valide la sesión al cargar)
 @router.get("/me", response_model=UsuarioActual)
 def usuario_actual(usuario: Usuario = Depends(get_current_user)):
-    return {"usuario_id": usuario.id, "nombre": usuario.nombre, "email": usuario.email, "rol": usuario.rol}
+    return {
+        "usuario_id": usuario.id,
+        "nombre": usuario.nombre,
+        "email": usuario.email,
+        "rol": usuario.rol,
+        "cursos": [{"id": c.id, "nombre": c.nombre} for c in usuario.cursos],
+    }
 
 # ENDPOINT 5: LOGOUT (invalida la sesión en el servidor, no solo en el navegador)
 @router.post("/logout")

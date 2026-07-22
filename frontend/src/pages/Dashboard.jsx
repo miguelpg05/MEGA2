@@ -119,7 +119,7 @@ export default function Dashboard() {
 
   // Nombre validado por el backend (AuthContext); si aún no llegó, usamos el de localStorage.
   const nombreUsuario = usuario?.nombre || localStorage.getItem('nombre_usuario') || 'Opositor';
-  const esStaff = usuario?.rol === 'profesor' || usuario?.rol === 'admin';
+  const esStaff = usuario?.rol === 'admin' || usuario?.rol === 'superadmin';
 
   // Consejo del día (determinista según la fecha, sin datos inventados)
   const consejoDelDia = CONSEJOS_ESTUDIO[new Date().getDate() % CONSEJOS_ESTUDIO.length];

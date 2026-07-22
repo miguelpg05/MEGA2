@@ -15,7 +15,7 @@ Notas:
 - Ya NO se insertan usuarios ficticios en el ranking (contaminaban el ranking real).
 """
 
-from models import SessionLocal, Tema, Pregunta, TestPlantilla
+from models import SessionLocal, Curso, Tema, Pregunta, TestPlantilla
 from services.preguntas import letra_de_texto
 
 
@@ -63,11 +63,20 @@ def _crear_preguntas(db, filas, tema_id):
 def sembrar_datos_demo():
     db = SessionLocal()
     try:
+        # --- Curso de demostración (el temario cuelga de un curso) ---
+        curso = db.query(Curso).filter(Curso.nombre == "Curso de demostración").first()
+        if not curso:
+            curso = Curso(nombre="Curso de demostración", descripcion="Datos de ejemplo para probar la plataforma")
+            db.add(curso)
+            db.commit()
+            db.refresh(curso)
+            print(f"✅ Curso de demostración creado (id={curso.id}).")
+
         # --- Temas + preguntas (solo si aún no hay temas) ---
         if not db.query(Tema).first():
             print("Inyectando temas y preguntas de demostración...")
-            tema1 = Tema(nombre="Tema 1: La Constitución Española", bloque="Derecho Constitucional")
-            tema2 = Tema(nombre="Tema 2: El Gobierno y la Administración", bloque="Derecho Constitucional")
+            tema1 = Tema(nombre="Tema 1: La Constitución Española", bloque="Derecho Constitucional", curso_id=curso.id)
+            tema2 = Tema(nombre="Tema 2: El Gobierno y la Administración", bloque="Derecho Constitucional", curso_id=curso.id)
             db.add_all([tema1, tema2])
             db.commit()
             db.refresh(tema1)

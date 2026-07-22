@@ -81,7 +81,8 @@ npm run lint
 - `GEMINI_API_KEY`
 - `GOOGLE_CLIENT_ID` — client ID de Google OAuth.
 - `GOOGLE_HOSTED_DOMAIN` — `academiamega.net`.
-- `ADMIN_EMAILS` / `PROFESOR_EMAILS` — emails (separados por comas) que se promocionan a `admin`/`profesor` automáticamente al iniciar sesión. **Bootstrap del primer admin**: pon tu email aquí y entra con Google.
+- `ADMIN_EMAILS` — emails (separados por comas) que se promocionan a **`superadmin`** al iniciar sesión. **Bootstrap del primer jefe**: pon tu email aquí.
+- `PROFESOR_EMAILS` — emails que se promocionan a **`admin`** (profesor: solo sus cursos asignados).
 - `SENTRY_DSN` — opcional; si se define, activa la monitorización de errores con Sentry.
 
 **Frontend** (`frontend/.env`; en Vercel como Environment Variables):
@@ -102,6 +103,20 @@ Existen `.env.example` en ambas carpetas: manténlos actualizados cuando añadas
 | **Soportar 200 concurrentes** | 🔴 Pendiente | Requiere: Neon pooled connection, pool de SQLAlchemy, workers de uvicorn/gunicorn, plan de pago en Render (el free hiberna), quitar el seed/ALTER de cada arranque. |
 
 ---
+
+## 5b. Roles y alcance por curso
+
+Todo el temario cuelga de un **`Curso`**. La tabla intermedia `usuario_cursos` (muchos a muchos) vincula usuarios y cursos.
+
+| Rol | Pensado para | Alcance |
+|---|---|---|
+| `superadmin` | Jefes de la academia | **Todos** los cursos. Único que gestiona cursos, usuarios y roles |
+| `admin` | Profesores | Solo los cursos **asignados**: puede añadir/editar/borrar temario y tests de esos cursos |
+| `estudiante` | Alumnos | Solo los cursos en los que está **matriculado** |
+
+- Dependencias en `routers/auth.py`: `require_gestor` (admin+superadmin) y `require_superadmin`.
+- El alcance se comprueba con `verificar_acceso_curso(usuario, curso_id)` y `cursos_permitidos_ids(usuario)` (devuelve `None` = todos).
+- **Al añadir un endpoint de gestión**, valida SIEMPRE el curso implicado (para tests/preguntas, resuélvelo a través de su `tema.curso_id`).
 
 ## 6. Convenciones de código
 
