@@ -1,0 +1,26 @@
+name: Mantener el backend despierto
+
+# El plan free de Render duerme el servicio tras ~15 minutos sin tráfico, y la
+# primera petición al despertar falla ("Failed to fetch"). Este ping periódico
+# lo mantiene activo. Solución definitiva: un plan de Render que no hiberne
+# (ver Objetivo 2 de escala en CLAUDE.md).
+on:
+  schedule:
+    - cron: '*/10 * * * *'   # cada 10 minutos
+  workflow_dispatch:          # permite lanzarlo a mano desde la pestaña Actions
+
+jobs:
+  ping:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Despertar el backend
+        run: |
+          for i in 1 2 3; do
+            if curl -fsS -m 60 https://mega2-mi1o.onrender.com/api/test-cors > /dev/null; then
+              echo "Backend despierto (intento $i)."
+              exit 0
+            fi
+            echo "Intento $i fallido; el servicio puede estar arrancando. Reintentando..."
+            sleep 20
+          done
+          echo "No se pudo contactar con el backend, pero el ping ya habrá disparado el arranque."
