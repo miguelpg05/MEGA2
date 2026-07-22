@@ -2,8 +2,9 @@ import os
 from datetime import datetime
 from contextlib import asynccontextmanager
 
-from fastapi import FastAPI, Depends, HTTPException
+from fastapi import FastAPI, Depends, HTTPException, Request
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import JSONResponse
 from sqlalchemy.orm import Session
 from google import genai
 
@@ -61,6 +62,24 @@ async def lifespan(app: FastAPI):
 # 2. INICIALIZACIÓN DE LA APP Y CORS
 # ==========================================
 app = FastAPI(title="API Academia Oposiciones", lifespan=lifespan)
+
+
+# IMPORTANTE: este middleware se añade ANTES que el de CORS para que quede por
+# DENTRO de él. Así, cuando una excepción no controlada revienta (p. ej. una
+# columna que falta en la base de datos), la respuesta 500 sale por el
+# CORSMiddleware y LLEVA sus cabeceras. Sin esto, el navegador no puede leer el
+# error y lo muestra como un engañoso "Failed to fetch", ocultando la causa real.
+@app.middleware("http")
+async def capturar_errores_no_controlados(request: Request, call_next):
+    try:
+        return await call_next(request)
+    except Exception as exc:
+        print(f"❌ Error no controlado en {request.method} {request.url.path}: {exc!r}")
+        return JSONResponse(
+            status_code=500,
+            content={"detail": "Error interno del servidor. Revisa los logs del backend."},
+        )
+
 
 app.add_middleware(
     CORSMiddleware,
