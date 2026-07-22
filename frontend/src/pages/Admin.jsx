@@ -164,6 +164,142 @@ function CursosSection() {
 }
 
 // ==========================================
+// Material (PDFs) de un tema
+// ==========================================
+function MaterialesTema({ temaId }) {
+  const [materiales, setMateriales] = useState([]);
+  const [cargando, setCargando] = useState(true);
+  const [aviso, setAviso] = useState('');
+  const fileRef = useRef(null);
+
+  const cargar = useCallback(() => {
+    apiJson(`/api/admin/temas/${temaId}/materiales`)
+      .then((d) => { setMateriales(d); setCargando(false); })
+      .catch(() => { setMateriales([]); setCargando(false); });
+  }, [temaId]);
+  useEffect(() => { cargar(); }, [cargar]);
+
+  const subir = async (e) => {
+    const archivo = e.target.files?.[0];
+    if (!archivo) return;
+    setAviso('Subiendo…');
+    try {
+      const fd = new FormData();
+      fd.append('archivo', archivo);
+      await apiJson(`/api/admin/temas/${temaId}/materiales`, { method: 'POST', body: fd });
+      setAviso('');
+      cargar();
+    } catch (err) { setAviso(err.message); }
+    finally { if (fileRef.current) fileRef.current.value = ''; }
+  };
+
+  const borrar = async (id) => {
+    if (!window.confirm('¿Eliminar este PDF?')) return;
+    setAviso('');
+    try { await apiJson(`/api/admin/materiales/${id}`, { method: 'DELETE' }); cargar(); }
+    catch (err) { setAviso(err.message); }
+  };
+
+  const enMB = (b) => `${((b || 0) / (1024 * 1024)).toFixed(2)} MB`;
+
+  return (
+    <div className="mt-3 bg-gray-50 rounded-xl p-4 space-y-3">
+      <div className="flex items-center justify-between gap-3">
+        <h4 className="text-sm font-semibold text-gray-700">Material (PDF)</h4>
+        <label className="text-sm text-gray-600 cursor-pointer bg-white border border-gray-200 hover:bg-gray-100 px-3 py-1.5 rounded-lg">
+          + Añadir PDF
+          <input ref={fileRef} type="file" accept="application/pdf,.pdf" onChange={subir} className="hidden" />
+        </label>
+      </div>
+      {aviso && <p className="text-sm text-red-600">{aviso}</p>}
+      {cargando ? (
+        <p className="text-sm text-gray-400">Cargando…</p>
+      ) : materiales.length === 0 ? (
+        <p className="text-sm text-gray-400">Este tema no tiene PDFs todavía.</p>
+      ) : (
+        <ul className="space-y-2">
+          {materiales.map((m) => (
+            <li key={m.id} className="flex justify-between items-center gap-3 bg-white rounded-lg px-3 py-2 border border-gray-100">
+              <span className="text-sm text-gray-700 truncate">
+                📄 {m.nombre_archivo} <span className="text-gray-400">({enMB(m.tamano_bytes)})</span>
+              </span>
+              <button onClick={() => borrar(m.id)} className="shrink-0 text-xs text-red-600 hover:bg-red-50 px-2 py-1 rounded cursor-pointer">Eliminar</button>
+            </li>
+          ))}
+        </ul>
+      )}
+    </div>
+  );
+}
+
+// Una fila de tema: ver, editar el nombre/bloque/curso y gestionar su material
+function TemaFila({ tema, cursos, onRecargar, onAviso }) {
+  const [editando, setEditando] = useState(false);
+  const [abierto, setAbierto] = useState(false);
+  const [nombre, setNombre] = useState(tema.nombre);
+  const [bloque, setBloque] = useState(tema.bloque || '');
+  const [cursoId, setCursoId] = useState(tema.curso_id || '');
+
+  const guardar = async () => {
+    onAviso('');
+    try {
+      await apiJson(`/api/admin/temas/${tema.id}`, {
+        method: 'PUT',
+        body: JSON.stringify({ nombre, bloque, curso_id: cursoId ? Number(cursoId) : null }),
+      });
+      setEditando(false);
+      onRecargar();
+    } catch (err) { onAviso(err.message); }
+  };
+
+  const borrar = async () => {
+    if (!window.confirm('¿Eliminar este tema? También se borrará su material.')) return;
+    onAviso('');
+    try { await apiJson(`/api/admin/temas/${tema.id}`, { method: 'DELETE' }); onRecargar(); }
+    catch (err) { onAviso(err.message); }
+  };
+
+  const nombreCurso = cursos.find((c) => c.id === tema.curso_id)?.nombre || 'Sin curso';
+
+  return (
+    <div className="p-4">
+      {editando ? (
+        <div className="grid grid-cols-1 sm:grid-cols-4 gap-2">
+          <input value={nombre} onChange={(e) => setNombre(e.target.value)} placeholder="Nombre del tema"
+            className="px-3 py-2 rounded-lg bg-gray-50 border border-gray-200 outline-none focus:ring-2 focus:ring-orange-500" />
+          <input value={bloque} onChange={(e) => setBloque(e.target.value)} placeholder="Bloque"
+            className="px-3 py-2 rounded-lg bg-gray-50 border border-gray-200 outline-none focus:ring-2 focus:ring-orange-500" />
+          <select value={cursoId} onChange={(e) => setCursoId(e.target.value)}
+            className="px-3 py-2 rounded-lg bg-gray-50 border border-gray-200 outline-none focus:ring-2 focus:ring-orange-500">
+            <option value="">Sin curso</option>
+            {cursos.map((c) => <option key={c.id} value={c.id}>{c.nombre}</option>)}
+          </select>
+          <div className="flex gap-2">
+            <button onClick={guardar} className="flex-1 px-3 py-2 bg-orange-500 hover:bg-orange-600 text-white text-sm font-medium rounded-lg cursor-pointer">Guardar</button>
+            <button onClick={() => setEditando(false)} className="px-3 py-2 bg-gray-100 text-gray-600 text-sm rounded-lg cursor-pointer">Cancelar</button>
+          </div>
+        </div>
+      ) : (
+        <div className="flex flex-wrap justify-between items-center gap-3">
+          <div className="min-w-0">
+            <p className="font-medium text-gray-800 truncate">{tema.nombre}</p>
+            <p className="text-xs text-gray-400 truncate">ID {tema.id} · {nombreCurso}{tema.bloque ? ` · ${tema.bloque}` : ''}</p>
+          </div>
+          <div className="flex gap-2 shrink-0">
+            <button onClick={() => setAbierto(!abierto)} className="text-sm text-gray-600 hover:bg-gray-100 px-3 py-1.5 rounded-lg cursor-pointer">
+              {abierto ? 'Ocultar' : '📄 Material'}
+            </button>
+            <button onClick={() => setEditando(true)} className="text-sm text-orange-600 hover:bg-orange-50 px-3 py-1.5 rounded-lg cursor-pointer">Editar</button>
+            <button onClick={borrar} className="text-sm text-red-600 hover:bg-red-50 px-3 py-1.5 rounded-lg cursor-pointer">Eliminar</button>
+          </div>
+        </div>
+      )}
+      {abierto && !editando && <MaterialesTema temaId={tema.id} />}
+    </div>
+  );
+}
+
+// ==========================================
 // Sección: TEMAS (con curso)
 // ==========================================
 function TemasSection() {
@@ -197,16 +333,8 @@ function TemasSection() {
     } catch (err) { setAviso(err.message); }
   };
 
-  const borrar = async (id) => {
-    if (!window.confirm('¿Eliminar este tema?')) return;
-    try { await apiJson(`/api/admin/temas/${id}`, { method: 'DELETE' }); cargar(); }
-    catch (err) { setAviso(err.message); }
-  };
-
   if (cargando) return <Cargando texto="Cargando temas..." className="py-12" />;
   if (error) return <MensajeError texto="No se pudieron cargar los temas." onReintentar={reintentar} />;
-
-  const nombreCurso = (id) => cursos.find((c) => c.id === id)?.nombre || 'Sin curso';
 
   return (
     <div className="space-y-6">
@@ -233,15 +361,7 @@ function TemasSection() {
       <div className="bg-white border border-gray-100 rounded-2xl shadow-sm divide-y divide-gray-100">
         {temas.length === 0 ? <p className="p-5 text-sm text-gray-400">No hay temas.</p> :
           temas.map((t) => (
-            <div key={t.id} className="p-4 flex justify-between items-center gap-3">
-              <div className="min-w-0">
-                <p className="font-medium text-gray-800 truncate">{t.nombre}</p>
-                <p className="text-xs text-gray-400 truncate">
-                  ID {t.id} · {nombreCurso(t.curso_id)}{t.bloque ? ` · ${t.bloque}` : ''}
-                </p>
-              </div>
-              <button onClick={() => borrar(t.id)} className="shrink-0 text-sm text-red-600 hover:bg-red-50 px-3 py-1.5 rounded-lg cursor-pointer">Eliminar</button>
-            </div>
+            <TemaFila key={t.id} tema={t} cursos={cursos} onRecargar={cargar} onAviso={setAviso} />
           ))}
       </div>
     </div>

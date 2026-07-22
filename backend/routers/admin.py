@@ -9,6 +9,7 @@ Roles:
 """
 import csv
 import io
+import os
 from datetime import datetime, timedelta
 
 from fastapi import APIRouter, Depends, HTTPException, UploadFile, File, Query
@@ -19,6 +20,7 @@ from models import (
     get_db,
     Curso,
     Tema,
+    MaterialTema,
     TestPlantilla,
     Pregunta,
     Usuario,
@@ -166,6 +168,71 @@ def borrar_tema(tema_id: int, usuario: Usuario = Depends(require_gestor), db: Se
     db.delete(tema)
     db.commit()
     return {"mensaje": "Tema eliminado"}
+
+
+# ==========================================
+# MATERIAL DEL TEMA (PDFs)
+# ==========================================
+# El PDF se guarda en la propia base de datos. Neon (free) son 0,5 GB en total,
+# así que limitamos el tamaño por archivo.
+MAX_PDF_MB = int(os.getenv("MAX_PDF_MB", "10"))
+
+def _material_resumen(m: MaterialTema) -> dict:
+    return {
+        "id": m.id,
+        "tema_id": m.tema_id,
+        "nombre_archivo": m.nombre_archivo,
+        "tamano_bytes": m.tamano_bytes,
+        "fecha_subida": m.fecha_subida,
+    }
+
+@router.get("/temas/{tema_id}/materiales")
+def listar_materiales(tema_id: int, usuario: Usuario = Depends(require_gestor), db: Session = Depends(get_db)):
+    tema = _tema_o_404(db, tema_id)
+    verificar_acceso_curso(usuario, tema.curso_id)
+    return [_material_resumen(m) for m in tema.materiales]
+
+@router.post("/temas/{tema_id}/materiales")
+async def subir_material(
+    tema_id: int,
+    archivo: UploadFile = File(...),
+    usuario: Usuario = Depends(require_gestor),
+    db: Session = Depends(get_db),
+):
+    tema = _tema_o_404(db, tema_id)
+    verificar_acceso_curso(usuario, tema.curso_id)
+
+    nombre = (archivo.filename or "").strip()
+    if not nombre.lower().endswith(".pdf"):
+        raise HTTPException(status_code=400, detail="Solo se admiten archivos PDF.")
+
+    contenido = await archivo.read()
+    if not contenido:
+        raise HTTPException(status_code=400, detail="El archivo está vacío.")
+    if len(contenido) > MAX_PDF_MB * 1024 * 1024:
+        raise HTTPException(status_code=400, detail=f"El PDF supera el máximo permitido de {MAX_PDF_MB} MB.")
+
+    material = MaterialTema(
+        tema_id=tema_id,
+        nombre_archivo=nombre,
+        tipo_mime=archivo.content_type or "application/pdf",
+        tamano_bytes=len(contenido),
+        contenido=contenido,
+    )
+    db.add(material)
+    db.commit()
+    db.refresh(material)
+    return _material_resumen(material)
+
+@router.delete("/materiales/{material_id}")
+def borrar_material(material_id: int, usuario: Usuario = Depends(require_gestor), db: Session = Depends(get_db)):
+    material = db.query(MaterialTema).filter(MaterialTema.id == material_id).first()
+    if not material:
+        raise HTTPException(status_code=404, detail="Material no encontrado")
+    verificar_acceso_curso(usuario, _tema_o_404(db, material.tema_id).curso_id)
+    db.delete(material)
+    db.commit()
+    return {"mensaje": "Material eliminado"}
 
 
 # ==========================================

@@ -1,6 +1,6 @@
 import os
 from dotenv import load_dotenv
-from sqlalchemy import create_engine, Column, Integer, String, Boolean, ForeignKey, DateTime, Table
+from sqlalchemy import create_engine, Column, Integer, String, Boolean, ForeignKey, DateTime, Table, LargeBinary
 from sqlalchemy.orm import declarative_base, relationship, sessionmaker
 from datetime import datetime
 
@@ -60,6 +60,24 @@ class Tema(Base):
     curso = relationship("Curso", back_populates="temas")
     # Relación: Un tema tiene muchas preguntas
     preguntas = relationship("Pregunta", back_populates="tema")
+    materiales = relationship("MaterialTema", back_populates="tema", cascade="all, delete-orphan")
+
+# 1b. Material del tema (PDFs). El contenido se guarda en la propia base de datos.
+# OJO: Neon (plan free) son 0,5 GB en total; por eso limitamos el tamaño por
+# archivo con MAX_PDF_MB. Si el temario crece, conviene mover esto a un
+# almacenamiento de objetos (S3/R2) y guardar aquí solo la URL.
+class MaterialTema(Base):
+    __tablename__ = "materiales_tema"
+
+    id = Column(Integer, primary_key=True, index=True)
+    tema_id = Column(Integer, ForeignKey("temas.id", ondelete="CASCADE"), nullable=False, index=True)
+    nombre_archivo = Column(String, nullable=False)
+    tipo_mime = Column(String, nullable=True)
+    tamano_bytes = Column(Integer, nullable=True)
+    contenido = Column(LargeBinary, nullable=False)
+    fecha_subida = Column(DateTime, default=datetime.utcnow)
+
+    tema = relationship("Tema", back_populates="materiales")
 
 # 2. Tabla de Preguntas (El corazón de los tests)
 class Pregunta(Base):

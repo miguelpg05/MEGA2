@@ -94,19 +94,26 @@ const TopicProgressCard = ({ topicName, temaId }) => {
         ></div>
       </div>
 
-      <div className="mt-6 flex flex-col sm:flex-row gap-3">
+      <div className="mt-6 grid grid-cols-1 sm:grid-cols-3 gap-3">
         <button
           onClick={() => navigate('/listado-tests', { state: { temaId: temaId } })}
-          className="flex-1 py-2 px-4 bg-orange-500 hover:bg-orange-600 text-white font-medium rounded-lg transition-colors cursor-pointer"
+          className="py-2 px-3 bg-orange-500 hover:bg-orange-600 text-white font-medium rounded-lg transition-colors cursor-pointer"
         >
-          Banco de Tests
+          Tests
+        </button>
+
+        <button
+          onClick={() => navigate('/material', { state: { temaId: temaId, temaNombre: topicName } })}
+          className="py-2 px-3 bg-white border border-gray-200 hover:border-orange-500 hover:text-orange-500 text-gray-600 font-medium rounded-lg transition-colors cursor-pointer"
+        >
+          📄 Material
         </button>
 
         <button
           onClick={() => navigate('/esquema', { state: { temaNombre: topicName } })}
-          className="flex-1 py-2 px-4 bg-white border border-gray-200 hover:border-orange-500 hover:text-orange-500 text-gray-600 font-medium rounded-lg transition-colors cursor-pointer"
+          className="py-2 px-3 bg-white border border-gray-200 hover:border-orange-500 hover:text-orange-500 text-gray-600 font-medium rounded-lg transition-colors cursor-pointer"
         >
-          Ver esquema
+          Esquema
         </button>
       </div>
     </div>

@@ -9,6 +9,7 @@ import Repaso from './pages/Repaso';
 import Esquema from './pages/Esquema';
 import Auth from './pages/Auth';
 import TestListado from './pages/TestListado';
+import MaterialTema from './pages/MaterialTema';
 import Admin from './pages/Admin';
 
 import { AuthProvider, useAuth } from './auth/AuthContext';
@@ -69,6 +70,7 @@ export default function App() {
           <Route path="/repaso" element={<RutaProtegida><Repaso /></RutaProtegida>} />
           <Route path="/esquema" element={<RutaProtegida><Esquema /></RutaProtegida>} />
           <Route path="/listado-tests" element={<RutaProtegida><TestListado /></RutaProtegida>} />
+          <Route path="/material" element={<RutaProtegida><MaterialTema /></RutaProtegida>} />
 
           {/* Panel de administración: solo profesores/admins */}
           <Route path="/admin" element={<RutaStaff><Admin /></RutaStaff>} />
