@@ -125,6 +125,12 @@ Existen `.env.example` en ambas carpetas: manténlos actualizados cuando añadas
 - **Tests + CI**: `backend/tests/` con pytest y `.github/workflows/ci.yml` (pytest + lint/build del front).
 - **Artefactos versionados**: `venv/`, `*.db`, `__pycache__/`, `.env` ya en `.gitignore` (no estaban trackeados).
 
+**⚠️ Trampas aprendidas (leer si algo "no conecta"):**
+- **`alembic stamp head` NO aplica las migraciones**, solo las marca como aplicadas. Sobre una BD ya existente hay que hacer `alembic stamp 0001` y luego `alembic upgrade head`. Si te saltas esto, faltan columnas (nos pasó con `usuarios.rol`) y **toda consulta a esa tabla peta**. Verifica con:
+  `SELECT column_name FROM information_schema.columns WHERE table_name='usuarios';`
+- **Un "Failed to fetch" en el navegador casi nunca es CORS ni red**: puede ser un 500 del backend. Ya está mitigado (los 500 llevan cabeceras CORS), pero para diagnosticar: prueba un endpoint **sin BD** (`/api/test-cors`), otro **con BD** (`/api/ranking/clase`) y otro de la tabla sospechosa. El que falle te señala la causa.
+- **Ojo con los servicios duplicados**: existieron a la vez un Render/Vercel antiguos (`backend-academia-kxx5`, `web-mega-flax`) y los buenos (`mega2-mi1o`, `mega-2-rho`). Confirma siempre a qué URL apunta el bundle desplegado.
+
 **⏳ Pendientes (prioridad para siguientes fases):**
 1. **`SECRET_KEY` con default inseguro** (`routers/auth.py`). Si en producción no se define la env var, los JWT son falsificables. Debe fallar al arrancar si falta.
 2. **Sin rate limiting**: los endpoints de IA (`/api/ia/*`) son abusables (coste de Gemini). Añadir límites (p. ej. `slowapi`).
