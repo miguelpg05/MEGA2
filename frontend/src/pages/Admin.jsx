@@ -169,13 +169,19 @@ function CursosSection() {
 function MaterialesTema({ temaId }) {
   const [materiales, setMateriales] = useState([]);
   const [cargando, setCargando] = useState(true);
+  const [errorCarga, setErrorCarga] = useState('');
   const [aviso, setAviso] = useState('');
   const fileRef = useRef(null);
 
   const cargar = useCallback(() => {
     apiJson(`/api/admin/temas/${temaId}/materiales`)
-      .then((d) => { setMateriales(d); setCargando(false); })
-      .catch(() => { setMateriales([]); setCargando(false); });
+      .then((d) => { setMateriales(d); setErrorCarga(''); setCargando(false); })
+      .catch((err) => {
+        // No ocultamos el fallo tras un "sin PDFs": mostramos el error real.
+        setErrorCarga(err.message || 'No se pudo cargar el material.');
+        setMateriales([]);
+        setCargando(false);
+      });
   }, [temaId]);
   useEffect(() => { cargar(); }, [cargar]);
 
@@ -214,6 +220,11 @@ function MaterialesTema({ temaId }) {
       {aviso && <p className="text-sm text-red-600">{aviso}</p>}
       {cargando ? (
         <p className="text-sm text-gray-400">Cargando…</p>
+      ) : errorCarga ? (
+        <div className="text-sm text-red-600 bg-red-50 rounded-lg p-3">
+          <p className="font-medium">{errorCarga}</p>
+          <button onClick={cargar} className="mt-2 text-xs underline cursor-pointer">Reintentar</button>
+        </div>
       ) : materiales.length === 0 ? (
         <p className="text-sm text-gray-400">Este tema no tiene PDFs todavía.</p>
       ) : (
