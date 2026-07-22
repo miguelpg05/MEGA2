@@ -121,6 +121,25 @@ export default function Dashboard() {
   const nombreUsuario = usuario?.nombre || localStorage.getItem('nombre_usuario') || 'Opositor';
   const esStaff = usuario?.rol === 'admin' || usuario?.rol === 'superadmin';
 
+  // Los temas se leen de la base de datos (los que crees en el panel aparecen aquí)
+  const [temas, setTemas] = useState([]);
+  const [cargandoTemas, setCargandoTemas] = useState(true);
+  const [errorTemas, setErrorTemas] = useState(false);
+
+  const cargarTemas = useCallback(() => {
+    apiFetch('/api/temas')
+      .then((r) => {
+        if (!r.ok) throw new Error('respuesta no OK');
+        return r.json();
+      })
+      .then((datos) => { setTemas(datos); setErrorTemas(false); setCargandoTemas(false); })
+      .catch((err) => { console.error('Error al cargar los temas:', err); setErrorTemas(true); setCargandoTemas(false); });
+  }, []);
+
+  useEffect(() => { cargarTemas(); }, [cargarTemas]);
+
+  const reintentarTemas = () => { setCargandoTemas(true); setErrorTemas(false); cargarTemas(); };
+
   // Consejo del día (determinista según la fecha, sin datos inventados)
   const consejoDelDia = CONSEJOS_ESTUDIO[new Date().getDate() % CONSEJOS_ESTUDIO.length];
 
@@ -171,11 +190,32 @@ export default function Dashboard() {
           {/* COLUMNA PRINCIPAL (IZQUIERDA Y CENTRO) */}
           <div className="lg:col-span-2 space-y-8">
 
-            {/* TARJETAS DE PROGRESO POR TEMA (ID dinámico) */}
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-              <TopicProgressCard topicName="Tema 1: La Constitución Española" temaId={1} />
-              <TopicProgressCard topicName="Tema 2: El Gobierno y la Administración" temaId={2} />
-            </div>
+            {/* TARJETAS DE PROGRESO POR TEMA (leídas de la base de datos) */}
+            {cargandoTemas ? (
+              <div className="p-6 bg-white border border-gray-200 rounded-2xl shadow-sm flex items-center justify-center min-h-[220px]">
+                <Cargando texto="Cargando tus temas..." />
+              </div>
+            ) : errorTemas ? (
+              <div className="p-6 bg-white border border-gray-200 rounded-2xl shadow-sm">
+                <MensajeError texto="No se pudieron cargar los temas." onReintentar={reintentarTemas} />
+              </div>
+            ) : temas.length === 0 ? (
+              <div className="p-8 bg-white border border-gray-200 rounded-2xl shadow-sm text-center">
+                <div className="text-4xl mb-3">📚</div>
+                <p className="text-gray-600 font-medium">Todavía no hay temas disponibles.</p>
+                <p className="text-gray-400 text-sm mt-1">
+                  {esStaff
+                    ? 'Créalos desde el Panel admin y aparecerán aquí automáticamente.'
+                    : 'Tu academia aún no ha publicado temario para tus cursos.'}
+                </p>
+              </div>
+            ) : (
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                {temas.map((t) => (
+                  <TopicProgressCard key={t.id} topicName={t.nombre} temaId={t.id} />
+                ))}
+              </div>
+            )}
 
             <ResumenIA />
           </div>

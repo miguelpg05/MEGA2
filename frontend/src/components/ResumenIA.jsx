@@ -1,21 +1,26 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import ReactMarkdown from 'react-markdown';
 import { apiFetch } from '../api';
 
 export default function ResumenIA() {
   // AHORA ES UN ARRAY: Guardamos los temas en una lista para permitir varios
-  const [temasSeleccionados, setTemasSeleccionados] = useState(['Tema 1: La Constitución Española']);
+  const [temasSeleccionados, setTemasSeleccionados] = useState([]);
   const [tiempo, setTiempo] = useState(15);
   const [nivel, setNivel] = useState('Intermedio');
   const [generando, setGenerando] = useState(false);
   const [resumen, setResumen] = useState('');
 
-  // Lista de temas disponibles en tu plataforma
-  const temasDisponibles = [
-    "Tema 1: La Constitución Española",
-    "Tema 2: El Gobierno y la Administración",
-    "Derecho Constitucional (General)"
-  ];
+  // Los temas disponibles se leen de la base de datos (los de tus cursos)
+  const [temasDisponibles, setTemasDisponibles] = useState([]);
+
+  const cargarTemas = useCallback(() => {
+    apiFetch('/api/temas')
+      .then((r) => (r.ok ? r.json() : Promise.reject(new Error('no OK'))))
+      .then((datos) => setTemasDisponibles(datos.map((t) => t.nombre)))
+      .catch(() => setTemasDisponibles([]));
+  }, []);
+
+  useEffect(() => { cargarTemas(); }, [cargarTemas]);
 
   // Función para marcar o desmarcar un tema
   const toggleTema = (tema) => {
@@ -73,6 +78,9 @@ export default function ResumenIA() {
       {/* NUEVO: Selector Múltiple de Temas */}
       <div className="mb-8">
         <label className="block text-sm font-medium text-gray-500 mb-3">¿Qué temas quieres combinar en tu resumen?</label>
+        {temasDisponibles.length === 0 && (
+          <p className="text-sm text-gray-400 italic">Aún no hay temas disponibles para tus cursos.</p>
+        )}
         <div className="flex flex-col gap-3">
           {temasDisponibles.map((tema) => {
             const estaSeleccionado = temasSeleccionados.includes(tema);

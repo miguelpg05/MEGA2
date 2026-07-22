@@ -10,7 +10,7 @@ from google import genai
 
 # Modelos, routers y utilidades
 from models import get_db, Pregunta, Puntuacion, RegistroFallo, Usuario, IALlamada
-from routers import progreso, auth, progreso_test, admin
+from routers import progreso, auth, progreso_test, admin, temas
 from routers.auth import get_current_user
 from schemas import (
     FalloRequest,
@@ -106,6 +106,7 @@ app.include_router(progreso.router)
 app.include_router(auth.router)
 app.include_router(progreso_test.router)
 app.include_router(admin.router)
+app.include_router(temas.router)
 
 # ==========================================
 # 4. RUTAS DE LA API
