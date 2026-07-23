@@ -23,7 +23,7 @@ def _proveedor() -> str:
     return (os.getenv("IA_PROVIDER") or "groq").strip().lower()
 
 
-def _generar_groq(prompt: str, json_mode: bool):
+def _generar_groq(prompt: str, json_mode: bool, max_tokens):
     api_key = os.getenv("GROQ_API_KEY")
     if not api_key:
         raise IAError("La IA no está configurada en el servidor (falta GROQ_API_KEY).", status=500)
@@ -34,6 +34,8 @@ def _generar_groq(prompt: str, json_mode: bool):
         "messages": [{"role": "user", "content": prompt}],
         "temperature": 0.4,
     }
+    if max_tokens:
+        payload["max_tokens"] = max_tokens
     if json_mode:
         payload["response_format"] = {"type": "json_object"}
 
@@ -73,7 +75,7 @@ def _generar_groq(prompt: str, json_mode: bool):
     return texto, tokens
 
 
-def _generar_gemini(prompt: str, json_mode: bool):
+def _generar_gemini(prompt: str, json_mode: bool, max_tokens):
     api_key = os.getenv("GEMINI_API_KEY")
     if not api_key:
         raise IAError("La IA no está configurada en el servidor (falta GEMINI_API_KEY).", status=500)
@@ -98,9 +100,10 @@ def _generar_gemini(prompt: str, json_mode: bool):
     return texto, tokens
 
 
-def generar_texto(prompt: str, json_mode: bool = False):
+def generar_texto(prompt: str, json_mode: bool = False, max_tokens: int = None):
     """Genera texto con el proveedor configurado. Devuelve (texto, tokens_totales).
+    `max_tokens` limita la longitud de la respuesta (útil para respuestas extensas).
     Lanza IAError (con .mensaje y .status) si algo falla."""
     if _proveedor() == "gemini":
-        return _generar_gemini(prompt, json_mode)
-    return _generar_groq(prompt, json_mode)  # Groq por defecto
+        return _generar_gemini(prompt, json_mode, max_tokens)
+    return _generar_groq(prompt, json_mode, max_tokens)  # Groq por defecto

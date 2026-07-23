@@ -128,30 +128,54 @@ def generar_resumen_ia(datos: ResumenRequest, usuario: Usuario = Depends(get_cur
 
     if contenido:
         base = (
-            f'Resume para estudiar el CONTENIDO que te doy (procedente de {fuente}), '
-            f'sobre "{datos.tema}". Cíñete a ese contenido; no inventes datos que no aparezcan.'
+            f'Elabora un material de estudio DETALLADO a partir del CONTENIDO que te doy '
+            f'(procedente de {fuente}), sobre "{datos.tema}". Cíñete a ese contenido; '
+            f'no inventes datos que no aparezcan, pero desarrolla y explica todo lo que sí aparece.'
         )
         bloque_contenido = f"\n\nCONTENIDO:\n{contenido}"
     else:
-        base = f'Genera un resumen de estudio sobre: "{datos.tema}".'
+        base = f'Elabora un material de estudio DETALLADO y completo sobre: "{datos.tema}".'
         bloque_contenido = ""
 
-    prompt = f"""Actúa como un preparador de oposiciones experto en síntesis.
+    # La extensión y profundidad escalan con el tiempo disponible...
+    guias_tiempo = {
+        5: "Extensión: resumen ágil pero COMPLETO (unas 300-450 palabras). Cubre todos los puntos esenciales sin dejarte nada importante.",
+        15: "Extensión: resumen DETALLADO (unas 600-900 palabras). Desarrolla cada apartado con explicaciones, no solo titulares.",
+        30: "Extensión: material EXTENSO y EXHAUSTIVO (1000-1500 palabras o más). Desarrolla en profundidad cada bloque, con matices y ejemplos.",
+    }
+    guia_tiempo = guias_tiempo.get(datos.tiempo, guias_tiempo[15])
+
+    # ...y con el nivel del alumno.
+    guias_nivel = {
+        "Principiante": "Explica desde la base: define los términos, usa ejemplos sencillos y frases claras para entenderlo por primera vez.",
+        "Intermedio": "Asume los conceptos básicos y profundiza en lo importante, equilibrando explicación y síntesis.",
+        "Avanzado": "Repaso de alto nivel: entra en matices, excepciones y detalles finos (artículos concretos, plazos, cifras, jurisprudencia si aplica).",
+    }
+    guia_nivel = guias_nivel.get(datos.nivel, guias_nivel["Intermedio"])
+
+    prompt = f"""Actúa como un preparador de oposiciones experto que crea apuntes de estudio.
 {base}
 
-El alumno tiene un nivel {datos.nivel} y dispone de {datos.tiempo} minutos para repasar.
-Ajusta la extensión y la profundidad a ese tiempo.
+Nivel del alumno: {datos.nivel}. Tiempo para repasar: {datos.tiempo} minutos.
+{guia_tiempo}
+{guia_nivel}
 
-Da el resultado en **Markdown** bien estructurado y fácil de memorizar:
-- Empieza con una frase de contexto (1 línea).
-- Divide en secciones con encabezados (## Título).
-- Usa listas con viñetas y **negrita** en los términos clave.
-- Incluye los datos concretos importantes (artículos, plazos, cifras, nombres) cuando existan.
-- Cierra con "### 🔑 Claves para recordar": 3-5 puntos o reglas mnemotécnicas.
-Escribe en español, claro y directo. No añadas comentarios sobre ti mismo ni sobre el formato.{bloque_contenido}
+MUY IMPORTANTE — sé DETALLADO y EXTENSO: no te limites a una lista de titulares.
+Desarrolla cada punto con 2-4 frases explicativas, define los conceptos, incluye
+datos concretos (artículos, plazos, cifras, nombres), ejemplos y relaciones entre ideas.
+
+Formato en **Markdown** bien estructurado y fácil de memorizar:
+- Frase de contexto inicial.
+- Secciones con encabezados (## Título) y subsecciones (### ) cuando convenga.
+- Párrafos explicativos combinados con listas y **negrita** en los términos clave.
+- Cierra con "### 🔑 Claves para recordar": 5-8 puntos o reglas mnemotécnicas.
+Escribe en español, claro y didáctico. No añadas comentarios sobre ti mismo ni sobre el formato.{bloque_contenido}
 """
+    # Escalamos también el máximo de tokens de salida según el tiempo, para que no
+    # se corte un resumen largo.
+    tope_tokens = {5: 1500, 15: 3000, 30: 5000}.get(datos.tiempo, 3000)
     try:
-        texto, tokens = generar_texto(prompt)
+        texto, tokens = generar_texto(prompt, max_tokens=tope_tokens)
     except IAError as e:
         raise HTTPException(status_code=e.status, detail=e.mensaje)
 
