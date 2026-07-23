@@ -29,8 +29,8 @@ export default function ResumenIA() {
   }, []);
   useEffect(() => { cargar(); }, [cargar]);
 
-  const toggleTema = (tema) => {
-    setTemasSeleccionados((prev) => prev.includes(tema) ? prev.filter((t) => t !== tema) : [...prev, tema]);
+  const toggleTema = (id) => {
+    setTemasSeleccionados((prev) => prev.includes(id) ? prev.filter((t) => t !== id) : [...prev, id]);
   };
 
   const generar = async () => {
@@ -39,7 +39,9 @@ export default function ResumenIA() {
 
     if (fuente === 'temas') {
       if (temasSeleccionados.length === 0) { setError('Selecciona al menos un tema.'); return; }
-      cuerpo.tema = temasSeleccionados.join(', ');
+      const seleccionados = temasDisponibles.filter((t) => temasSeleccionados.includes(t.id));
+      cuerpo.tema = seleccionados.map((t) => t.nombre).join(', ');
+      cuerpo.tema_ids = temasSeleccionados; // el backend usará TODOS los PDFs de estos temas
     } else if (fuente === 'texto') {
       if (!textoLibre.trim()) { setError('Escribe o pega algún texto para resumir.'); return; }
       cuerpo.tema = 'el texto aportado';
@@ -90,17 +92,18 @@ export default function ResumenIA() {
       {/* Selección múltiple de temas (solo en modo "temas") */}
       {fuente === 'temas' && (
         <div className="mb-6">
-          <label className="block text-sm font-medium text-gray-500 mb-3">¿Qué temas quieres combinar?</label>
+          <label className="block text-sm font-medium text-gray-500 mb-1">¿Qué temas quieres combinar?</label>
+          <p className="text-xs text-gray-400 mb-3">Se usará <strong>todo el material (PDFs)</strong> de los temas que marques.</p>
           {temasDisponibles.length === 0 && (
             <p className="text-sm text-gray-400 italic">Aún no hay temas disponibles para tus cursos.</p>
           )}
           <div className="flex flex-col gap-3">
             {temasDisponibles.map((t) => {
-              const estaSeleccionado = temasSeleccionados.includes(t.nombre);
+              const estaSeleccionado = temasSeleccionados.includes(t.id);
               return (
                 <button
                   key={t.id}
-                  onClick={() => toggleTema(t.nombre)}
+                  onClick={() => toggleTema(t.id)}
                   className={`flex items-center gap-3 p-4 rounded-xl border-2 transition-all cursor-pointer text-left ${estaSeleccionado ? 'border-orange-500 bg-orange-50 text-orange-700 font-medium' : 'border-gray-100 text-gray-500 hover:border-orange-200 hover:bg-orange-50/30'}`}
                 >
                   <div className={`w-5 h-5 rounded border flex items-center justify-center transition-colors ${estaSeleccionado ? 'bg-orange-500 border-orange-500 text-white' : 'border-gray-300 bg-white'}`}>

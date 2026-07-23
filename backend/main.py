@@ -251,6 +251,29 @@ def _contenido_fuente(datos, usuario: Usuario, db: Session):
             raise HTTPException(status_code=400, detail="No se pudo extraer texto de ese PDF (puede ser escaneado/imagen).")
         return texto, f"el documento «{material.nombre_archivo}»"
 
+    # Varios temas: combinamos el texto de TODOS sus PDFs (con un tope global para
+    # controlar tokens/coste). Si ningún tema tiene material, se resume por título.
+    tema_ids = getattr(datos, "tema_ids", None)
+    if tema_ids:
+        TOPE_TOTAL = 26000
+        partes, total = [], 0
+        for tid in tema_ids:
+            if total >= TOPE_TOTAL:
+                break
+            tema = db.query(Tema).filter(Tema.id == tid).first()
+            if not tema or not _tema_accesible_para(usuario, tema):
+                continue
+            for material in tema.materiales:
+                if total >= TOPE_TOTAL:
+                    break
+                texto_pdf = extraer_texto_pdf(material.contenido, max_chars=min(12000, TOPE_TOTAL - total))
+                if texto_pdf:
+                    partes.append(f"\n\n### {tema.nombre} · {material.nombre_archivo}\n{texto_pdf}")
+                    total += len(texto_pdf)
+        contenido = "".join(partes).strip()
+        if contenido:
+            return contenido, "los materiales de los temas seleccionados"
+
     return "", "el tema (solo el título)"
 
 
