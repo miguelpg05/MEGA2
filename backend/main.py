@@ -251,15 +251,29 @@ Reglas: máximo 6 ramas; máximo 8 hijos por rama; cada texto de 5 palabras como
 máximo; en español; sin comillas ni paréntesis dentro de los textos.
 {("CONTENIDO:\\n" + contenido) if contenido else ""}
 """
+    modelo = os.getenv("GEMINI_MODEL", "gemini-2.5-flash")
+
+    # 1) Llamada al modelo
     try:
         client = genai.Client(api_key=GEMINI_API_KEY)
-        response = client.models.generate_content(model='gemini-2.5-flash', contents=prompt)
-        _registrar_uso_ia(db, usuario.id, "esquema", response)
-        data = extraer_json(response.text)
+        response = client.models.generate_content(model=modelo, contents=prompt)
+    except Exception as e:
+        print(f"❌ Esquema: fallo al llamar a Gemini (modelo={modelo}): {e!r}")
+        raise HTTPException(status_code=502, detail=f"La IA no respondió (modelo {modelo}): {str(e)[:300]}")
+
+    _registrar_uso_ia(db, usuario.id, "esquema", response)
+
+    # 2) Procesado de la respuesta a un mindmap válido
+    try:
+        texto_ia = response.text or ""
+    except Exception as e:
+        print(f"❌ Esquema: no se pudo leer response.text: {e!r}")
+        raise HTTPException(status_code=502, detail=f"La IA no devolvió texto: {str(e)[:200]}")
+
+    try:
+        data = extraer_json(texto_ia)
         codigo = construir_mindmap(data)
         return {"esquema_codigo": codigo, "fuente": fuente}
-    except HTTPException:
-        raise
     except Exception as e:
-        print(f"Error generando el esquema: {e!r}")
-        raise HTTPException(status_code=502, detail="La IA no pudo generar el esquema. Inténtalo de nuevo.")
+        print(f"❌ Esquema: respuesta no parseable: {e!r} | texto={texto_ia[:300]!r}")
+        raise HTTPException(status_code=502, detail=f"Formato inesperado de la IA: {str(e)[:150]} · respuesta: {texto_ia[:150]}")
