@@ -62,6 +62,9 @@ class RepasoCompletado(BaseModel):
 
 class EsquemaRequest(BaseModel):
     tema_nombre: str
+    tema_id: Optional[int] = None
+    material_id: Optional[int] = None  # PDF concreto del tema sobre el que basar el esquema
+    texto: Optional[str] = None        # texto libre aportado por el usuario
 
 # --- ESQUEMAS DEL PANEL DE ADMINISTRACIÓN ---
 

@@ -110,7 +110,7 @@ const TopicProgressCard = ({ topicName, temaId }) => {
         </button>
 
         <button
-          onClick={() => navigate('/esquema', { state: { temaNombre: topicName } })}
+          onClick={() => navigate('/esquema', { state: { temaId: temaId, temaNombre: topicName } })}
           className="py-2 px-3 bg-white border border-gray-200 hover:border-orange-500 hover:text-orange-500 text-gray-600 font-medium rounded-lg transition-colors cursor-pointer"
         >
           Esquema

@@ -11,5 +11,6 @@ python-dotenv
 google-auth
 alembic
 openpyxl
+pypdf
 sentry-sdk[fastapi]
 pytest

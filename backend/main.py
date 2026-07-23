@@ -9,9 +9,9 @@ from sqlalchemy.orm import Session
 from google import genai
 
 # Modelos, routers y utilidades
-from models import get_db, Pregunta, Puntuacion, RegistroFallo, Usuario, IALlamada
+from models import get_db, Pregunta, Puntuacion, RegistroFallo, Usuario, IALlamada, Tema, MaterialTema
 from routers import progreso, auth, progreso_test, admin, temas
-from routers.auth import get_current_user
+from routers.auth import get_current_user, es_superadmin
 from schemas import (
     FalloRequest,
     ResumenRequest,
@@ -20,6 +20,7 @@ from schemas import (
     EsquemaRequest,
 )
 from services.preguntas import texto_opcion_correcta, textos_correctos
+from services.esquema import construir_mindmap, extraer_json, extraer_texto_pdf
 
 # Monitorización de errores con Sentry (opcional: solo si se define SENTRY_DSN)
 SENTRY_DSN = os.getenv("SENTRY_DSN")
@@ -195,42 +196,70 @@ def completar_repaso(datos: RepasoCompletado, usuario: Usuario = Depends(get_cur
     db.commit()
     return {"mensaje": "¡Pregunta superada y eliminada del mazo!"}
 
+def _tema_accesible_para(usuario: Usuario, tema: Tema) -> bool:
+    if es_superadmin(usuario):
+        return True
+    if tema is None:
+        return False
+    return tema.curso_id is None or tema.curso_id in [c.id for c in usuario.cursos]
+
+
+def _contenido_para_esquema(datos: EsquemaRequest, usuario: Usuario, db: Session):
+    """Devuelve (texto_fuente, descripcion_fuente) según lo que el usuario haya
+    elegido: texto libre, un PDF del tema, o solo el nombre del tema."""
+    if datos.texto and datos.texto.strip():
+        return datos.texto.strip()[:18000], "el texto proporcionado"
+
+    if datos.material_id:
+        material = db.query(MaterialTema).filter(MaterialTema.id == datos.material_id).first()
+        if not material:
+            raise HTTPException(status_code=404, detail="Material no encontrado.")
+        tema = db.query(Tema).filter(Tema.id == material.tema_id).first()
+        if not _tema_accesible_para(usuario, tema):
+            raise HTTPException(status_code=403, detail="No tienes acceso a este material.")
+        texto = extraer_texto_pdf(material.contenido)
+        if not texto:
+            raise HTTPException(status_code=400, detail="No se pudo extraer texto de ese PDF (puede ser escaneado/imagen).")
+        return texto, f"el documento «{material.nombre_archivo}»"
+
+    return "", "el tema (solo el título)"
+
+
 @app.post("/api/ia/esquema")
 def generar_esquema_ia(datos: EsquemaRequest, usuario: Usuario = Depends(get_current_user), db: Session = Depends(get_db)):
-    client = genai.Client(api_key=GEMINI_API_KEY)
-    prompt = f"""
-    Actúa como un experto en diseño instruccional y síntesis pedagógica para oposiciones.
-    Tu objetivo es transformar el tema "{datos.tema_nombre}" en un mapa mental de Mermaid.js que facilite la memoria visual.
+    if not GEMINI_API_KEY:
+        raise HTTPException(status_code=500, detail="La IA no está configurada en el servidor (falta GEMINI_API_KEY).")
 
-    REGLAS ESTRUCTURALES:
-    1. Usa exclusivamente la sintaxis `mindmap`.
-    2. Jerarquía Estricta:
-    - Raíz: Usa la forma de bordes dobles `((Nombre del Tema))`
-    - Nivel 1 (Bloques principales): Usa la forma redondeada `(Concepto)`
-    - Nivel 2 (Detalles): Usa la forma de nubes `)Detalle(` o rectángulos `[Detalle]`
-    3. Regla de Oro: Máximo 3 palabras por nodo. Si es más largo, sintetiza.
-    4. Densidad: No generes más de 5 ramas principales para evitar el desorden visual.
-    5. Iconografía: Incluye un emoji relevante al principio de cada nodo de Nivel 1 para mejorar la asociación mental.
+    contenido, fuente = _contenido_para_esquema(datos, usuario, db)
 
-    CONFIGURACIÓN VISUAL:
-    - Empieza el bloque con:
-    ---
-    config:
-    look: handDrawn
-    theme: neutral
-    ---
-    mindmap
-    (( {datos.tema_nombre} ))
-    """
+    base = (
+        f'Basándote en {fuente}, sobre el tema "{datos.tema_nombre}",'
+        if contenido == "" else
+        f'A partir del siguiente CONTENIDO (de {fuente}) sobre el tema "{datos.tema_nombre}",'
+    )
+    prompt = f"""Eres un experto en síntesis pedagógica para oposiciones.
+{base} crea un mapa mental jerárquico para memorizar lo esencial.
+
+Devuelve EXCLUSIVAMENTE un JSON válido (sin explicaciones, sin markdown, sin ```),
+con esta forma exacta:
+{{"titulo": "Título corto del tema",
+  "ramas": [
+    {{"titulo": "Bloque principal", "hijos": ["Detalle", "Detalle"]}}
+  ]}}
+
+Reglas: máximo 6 ramas; máximo 8 hijos por rama; cada texto de 5 palabras como
+máximo; en español; sin comillas ni paréntesis dentro de los textos.
+{("CONTENIDO:\\n" + contenido) if contenido else ""}
+"""
     try:
-        response = client.models.generate_content(
-            model='gemini-2.5-flash',
-            contents=prompt
-        )
+        client = genai.Client(api_key=GEMINI_API_KEY)
+        response = client.models.generate_content(model='gemini-2.5-flash', contents=prompt)
         _registrar_uso_ia(db, usuario.id, "esquema", response)
-        codigo_limpio = response.text.replace("```mermaid", "").replace("```", "").strip()
-        return {"esquema_codigo": codigo_limpio}
+        data = extraer_json(response.text)
+        codigo = construir_mindmap(data)
+        return {"esquema_codigo": codigo, "fuente": fuente}
+    except HTTPException:
+        raise
     except Exception as e:
-        print(f"Error detallado de Gemini: {e}")
-        error_diagram = "mindmap\nroot((Error al generar))\n   Inténtalo de nuevo\n   Revisa la conexión"
-        return {"esquema_codigo": error_diagram}
+        print(f"Error generando el esquema: {e!r}")
+        raise HTTPException(status_code=502, detail="La IA no pudo generar el esquema. Inténtalo de nuevo.")
