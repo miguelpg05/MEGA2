@@ -56,6 +56,12 @@ def _tema_o_404(db: Session, tema_id: int) -> Tema:
         raise HTTPException(status_code=404, detail="Tema no encontrado")
     return tema
 
+def _curso_id_de_tema(db: Session, tema_id) -> object:
+    """curso_id del tema, o None si el tema ya no existe (tests/preguntas huérfanos).
+    No lanza 404: así un superadmin puede borrar contenido cuyo tema se eliminó."""
+    tema = db.query(Tema).filter(Tema.id == tema_id).first()
+    return tema.curso_id if tema else None
+
 def _temas_permitidos_ids(db: Session, usuario: Usuario):
     """IDs de temas accesibles. None = todos (superadmin)."""
     permitidos = cursos_permitidos_ids(usuario)
@@ -273,8 +279,8 @@ def editar_test(test_id: int, datos: TestPlantillaIn, usuario: Usuario = Depends
     test = db.query(TestPlantilla).filter(TestPlantilla.id == test_id).first()
     if not test:
         raise HTTPException(status_code=404, detail="Test no encontrado")
-    # Acceso al curso actual y al de destino
-    verificar_acceso_curso(usuario, _tema_o_404(db, test.tema_id).curso_id)
+    # Acceso al curso actual (tolerante si el tema fue borrado) y al de destino
+    verificar_acceso_curso(usuario, _curso_id_de_tema(db, test.tema_id))
     verificar_acceso_curso(usuario, _tema_o_404(db, datos.tema_id).curso_id)
     # Evitar duplicar el número de test en otra plantilla
     otro = db.query(TestPlantilla).filter(
@@ -295,7 +301,7 @@ def borrar_test(test_id: int, usuario: Usuario = Depends(require_gestor), db: Se
     test = db.query(TestPlantilla).filter(TestPlantilla.id == test_id).first()
     if not test:
         raise HTTPException(status_code=404, detail="Test no encontrado")
-    verificar_acceso_curso(usuario, _tema_o_404(db, test.tema_id).curso_id)
+    verificar_acceso_curso(usuario, _curso_id_de_tema(db, test.tema_id))
     db.delete(test)
     db.commit()
     return {"mensaje": "Test eliminado"}
@@ -368,7 +374,7 @@ def editar_pregunta(pregunta_id: int, datos: PreguntaIn, usuario: Usuario = Depe
     pregunta = db.query(Pregunta).filter(Pregunta.id == pregunta_id).first()
     if not pregunta:
         raise HTTPException(status_code=404, detail="Pregunta no encontrada")
-    verificar_acceso_curso(usuario, _tema_o_404(db, pregunta.tema_id).curso_id)
+    verificar_acceso_curso(usuario, _curso_id_de_tema(db, pregunta.tema_id))
     verificar_acceso_curso(usuario, _tema_o_404(db, datos.tema_id).curso_id)
     pregunta.enunciado = datos.enunciado.strip()
     pregunta.opcion_a = datos.opcion_a.strip()
@@ -388,7 +394,7 @@ def borrar_pregunta(pregunta_id: int, usuario: Usuario = Depends(require_gestor)
     pregunta = db.query(Pregunta).filter(Pregunta.id == pregunta_id).first()
     if not pregunta:
         raise HTTPException(status_code=404, detail="Pregunta no encontrada")
-    verificar_acceso_curso(usuario, _tema_o_404(db, pregunta.tema_id).curso_id)
+    verificar_acceso_curso(usuario, _curso_id_de_tema(db, pregunta.tema_id))
     db.delete(pregunta)
     db.commit()
     return {"mensaje": "Pregunta eliminada"}
