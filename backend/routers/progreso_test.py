@@ -97,6 +97,42 @@ def obtener_listado_tests_con_progreso(tema_id: Optional[int] = None, usuario: U
         
     return listado_final
 
+@router.get("/evolucion")
+def evolucion_intentos(usuario: Usuario = Depends(get_current_user), db: Session = Depends(get_db)):
+    """Evolución de resultados del alumno, un punto por intento (en orden cronológico).
+    Cada punto lleva el % de aciertos, para pintar una gráfica dinámica en el Dashboard."""
+    intentos = (
+        db.query(TestIntento)
+        .filter(TestIntento.alumno_id == usuario.id)
+        .order_by(TestIntento.fecha_intento)
+        .all()
+    )
+    if not intentos:
+        return []
+
+    # Total de preguntas por plantilla (para convertir fallos -> % de aciertos)
+    ids = list({i.test_plantilla_id for i in intentos})
+    plantillas = {
+        p.id: p for p in db.query(TestPlantilla).filter(TestPlantilla.id.in_(ids)).all()
+    }
+
+    resultado = []
+    for n, i in enumerate(intentos, start=1):
+        plantilla = plantillas.get(i.test_plantilla_id)
+        total = (plantilla.total_preguntas if plantilla and plantilla.total_preguntas else 10)
+        fallos = i.fallos_ultimo if i.fallos_ultimo is not None else 0
+        aciertos = max(0, total - fallos)
+        resultado.append({
+            "intento": n,
+            "fecha": i.fecha_intento,
+            "numero_test": plantilla.numero_test if plantilla else None,
+            "aciertos": aciertos,
+            "total": total,
+            "porcentaje": round(aciertos / total * 100) if total else 0,
+        })
+    return resultado
+
+
 @router.post("/registrar-intento")
 def registrar_intento_test(datos: IntentoRequest, usuario: Usuario = Depends(get_current_user), db: Session = Depends(get_db)):
     nuevo_intento = TestIntento(

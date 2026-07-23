@@ -2,6 +2,7 @@ import React, { useState, useEffect, useCallback } from 'react';
 import { useNavigate } from 'react-router-dom';
 import ResumenIA from '../components/ResumenIA';
 import RankingClase from '../components/RankingClase';
+import GraficoEvolucion from '../components/GraficoEvolucion';
 import { Cargando, MensajeError } from '../components/Estado';
 import { useAuth } from '../auth/AuthContext';
 import { apiFetch } from '../api';
@@ -249,6 +250,9 @@ export default function Dashboard() {
                 </button>
               </div>
             </div>
+
+            {/* Ficha de evolución de resultados (justo debajo del Mazo de Repaso) */}
+            <GraficoEvolucion />
 
             <RankingClase />
 
