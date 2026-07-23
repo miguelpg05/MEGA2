@@ -421,7 +421,19 @@ function TestsSection() {
   if (cargando) return <Cargando texto="Cargando tests..." className="py-12" />;
   if (error) return <MensajeError texto="No se pudieron cargar los tests." onReintentar={reintentar} />;
 
-  const nombreTema = (id) => temas.find((t) => t.id === id)?.nombre || `Tema ${id}`;
+  const editar = async (id, numero_test, tema_id) => {
+    setAviso('');
+    try {
+      await apiJson(`/api/admin/tests/${id}`, {
+        method: 'PUT',
+        body: JSON.stringify({ numero_test, tema_id: Number(tema_id), total_preguntas: 10 }),
+      });
+      cargar();
+    } catch (err) { setAviso(err.message); }
+  };
+
+  if (cargando) return <Cargando texto="Cargando tests..." className="py-12" />;
+  if (error) return <MensajeError texto="No se pudieron cargar los tests." onReintentar={reintentar} />;
 
   return (
     <div className="space-y-6">
@@ -440,14 +452,51 @@ function TestsSection() {
       <div className="bg-white border border-gray-100 rounded-2xl shadow-sm divide-y divide-gray-100">
         {tests.length === 0 ? <p className="p-5 text-sm text-gray-400">No hay tests.</p> :
           tests.map((t) => (
-            <div key={t.id} className="p-4 flex justify-between items-center gap-3">
-              <div className="min-w-0">
-                <p className="font-medium text-gray-800">Test {t.numero_test}</p>
-                <p className="text-xs text-gray-400 truncate">ID {t.id} · {nombreTema(t.tema_id)}</p>
-              </div>
-              <button onClick={() => borrar(t.id)} className="shrink-0 text-sm text-red-600 hover:bg-red-50 px-3 py-1.5 rounded-lg cursor-pointer">Eliminar</button>
-            </div>
+            <TestFila key={t.id} test={t} temas={temas} onEditar={editar} onBorrar={borrar} />
           ))}
+      </div>
+    </div>
+  );
+}
+
+// Una fila de test: ver o editar (nº y tema)
+function TestFila({ test, temas, onEditar, onBorrar }) {
+  const [editando, setEditando] = useState(false);
+  const [numero, setNumero] = useState(test.numero_test);
+  const [temaId, setTemaId] = useState(test.tema_id || '');
+  const nombreTema = temas.find((t) => t.id === test.tema_id)?.nombre || `Tema ${test.tema_id}`;
+
+  const guardar = async () => {
+    await onEditar(test.id, numero, temaId);
+    setEditando(false);
+  };
+
+  if (editando) {
+    return (
+      <div className="p-4 grid grid-cols-1 sm:grid-cols-3 gap-2">
+        <input value={numero} onChange={(e) => setNumero(e.target.value)}
+          className="px-3 py-2 rounded-lg bg-gray-50 border border-gray-200 outline-none focus:ring-2 focus:ring-orange-500" />
+        <select value={temaId} onChange={(e) => setTemaId(e.target.value)}
+          className="px-3 py-2 rounded-lg bg-gray-50 border border-gray-200 outline-none focus:ring-2 focus:ring-orange-500">
+          {temas.map((t) => <option key={t.id} value={t.id}>{t.nombre}</option>)}
+        </select>
+        <div className="flex gap-2">
+          <button onClick={guardar} className="flex-1 px-3 py-2 bg-orange-500 hover:bg-orange-600 text-white text-sm font-medium rounded-lg cursor-pointer">Guardar</button>
+          <button onClick={() => setEditando(false)} className="px-3 py-2 bg-gray-100 text-gray-600 text-sm rounded-lg cursor-pointer">Cancelar</button>
+        </div>
+      </div>
+    );
+  }
+
+  return (
+    <div className="p-4 flex justify-between items-center gap-3">
+      <div className="min-w-0">
+        <p className="font-medium text-gray-800">Test {test.numero_test}</p>
+        <p className="text-xs text-gray-400 truncate">ID {test.id} · {nombreTema}</p>
+      </div>
+      <div className="flex gap-2 shrink-0">
+        <button onClick={() => setEditando(true)} className="text-sm text-orange-600 hover:bg-orange-50 px-3 py-1.5 rounded-lg cursor-pointer">Editar</button>
+        <button onClick={() => onBorrar(test.id)} className="text-sm text-red-600 hover:bg-red-50 px-3 py-1.5 rounded-lg cursor-pointer">Eliminar</button>
       </div>
     </div>
   );
@@ -456,7 +505,7 @@ function TestsSection() {
 // ==========================================
 // Sección: PREGUNTAS
 // ==========================================
-const PREGUNTA_VACIA = { enunciado: '', opcion_a: '', opcion_b: '', opcion_c: '', opcion_d: '', respuesta_correcta: 'A', explicacion: '' };
+const PREGUNTA_VACIA = { enunciado: '', opcion_a: '', opcion_b: '', opcion_c: '', opcion_d: '', correctas: ['A'], explicacion: '' };
 
 function PreguntasSection() {
   const [tests, setTests] = useState([]);
@@ -465,6 +514,7 @@ function PreguntasSection() {
   const [cargandoTests, setCargandoTests] = useState(true);
   const [error, setError] = useState(false);
   const [form, setForm] = useState(PREGUNTA_VACIA);
+  const [editandoId, setEditandoId] = useState(null);
   const [aviso, setAviso] = useState('');
   const [importInfo, setImportInfo] = useState('');
   const fileRef = useRef(null);
@@ -483,26 +533,49 @@ function PreguntasSection() {
       .catch(() => setPreguntas([]));
   }, []);
 
-  const seleccionarTest = (id) => { setTestId(id); cargarPreguntas(id); };
+  const seleccionarTest = (id) => { setTestId(id); setEditandoId(null); setForm(PREGUNTA_VACIA); cargarPreguntas(id); };
 
-  const crear = async (e) => {
+  const cancelarEdicion = () => { setEditandoId(null); setForm(PREGUNTA_VACIA); setAviso(''); };
+
+  const guardar = async (e) => {
     e.preventDefault();
     setAviso('');
     if (!testId) { setAviso('Selecciona primero un test.'); return; }
+    if (form.correctas.length === 0) { setAviso('Marca al menos una opción correcta.'); return; }
     const test = tests.find((t) => String(t.id) === String(testId));
+    const cuerpo = {
+      enunciado: form.enunciado,
+      opcion_a: form.opcion_a, opcion_b: form.opcion_b, opcion_c: form.opcion_c, opcion_d: form.opcion_d,
+      explicacion: form.explicacion,
+      respuesta_correcta: [...form.correctas].sort().join(''),
+      tema_id: test.tema_id,
+      test_plantilla_id: Number(testId),
+    };
     try {
-      await apiJson('/api/admin/preguntas', {
-        method: 'POST',
-        body: JSON.stringify({ ...form, tema_id: test.tema_id, test_plantilla_id: Number(testId) }),
-      });
-      setForm(PREGUNTA_VACIA);
+      if (editandoId) {
+        await apiJson(`/api/admin/preguntas/${editandoId}`, { method: 'PUT', body: JSON.stringify(cuerpo) });
+      } else {
+        await apiJson('/api/admin/preguntas', { method: 'POST', body: JSON.stringify(cuerpo) });
+      }
+      cancelarEdicion();
       cargarPreguntas(testId);
     } catch (err) { setAviso(err.message); }
   };
 
+  const empezarEdicion = (p) => {
+    setEditandoId(p.id);
+    setForm({
+      enunciado: p.enunciado || '',
+      opcion_a: p.opcion_a || '', opcion_b: p.opcion_b || '', opcion_c: p.opcion_c || '', opcion_d: p.opcion_d || '',
+      correctas: p.respuestas_correctas?.length ? p.respuestas_correctas : ['A'],
+      explicacion: p.explicacion || '',
+    });
+    setAviso('');
+  };
+
   const borrar = async (id) => {
     if (!window.confirm('¿Eliminar esta pregunta?')) return;
-    try { await apiJson(`/api/admin/preguntas/${id}`, { method: 'DELETE' }); cargarPreguntas(testId); }
+    try { await apiJson(`/api/admin/preguntas/${id}`, { method: 'DELETE' }); if (editandoId === id) cancelarEdicion(); cargarPreguntas(testId); }
     catch (err) { setAviso(err.message); }
   };
 
@@ -525,6 +598,10 @@ function PreguntasSection() {
   if (error) return <MensajeError texto="No se pudieron cargar los tests." onReintentar={() => { setCargandoTests(true); cargarTests(); }} />;
 
   const set = (campo) => (e) => setForm({ ...form, [campo]: e.target.value });
+  const toggleCorrecta = (letra) => setForm((f) => ({
+    ...f,
+    correctas: f.correctas.includes(letra) ? f.correctas.filter((l) => l !== letra) : [...f.correctas, letra],
+  }));
 
   return (
     <div className="space-y-6">
@@ -542,23 +619,35 @@ function PreguntasSection() {
       {importInfo && <p className="text-sm text-gray-600">{importInfo}</p>}
 
       {testId && (
-        <form onSubmit={crear} className="bg-white border border-gray-100 rounded-2xl p-5 shadow-sm space-y-3">
+        <form onSubmit={guardar} className="bg-white border border-gray-100 rounded-2xl p-5 shadow-sm space-y-3">
+          <div className="flex items-center justify-between">
+            <h4 className="font-semibold text-gray-700">{editandoId ? 'Editar pregunta' : 'Nueva pregunta'}</h4>
+            {editandoId && <button type="button" onClick={cancelarEdicion} className="text-sm text-gray-500 hover:underline cursor-pointer">Cancelar edición</button>}
+          </div>
+
           <textarea value={form.enunciado} onChange={set('enunciado')} required placeholder="Enunciado"
             className="w-full px-4 py-2 rounded-xl bg-gray-50 border border-gray-200 outline-none focus:ring-2 focus:ring-orange-500" rows={2} />
+
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
             {['a', 'b', 'c', 'd'].map((l) => (
-              <input key={l} value={form[`opcion_${l}`]} onChange={set(`opcion_${l}`)} required placeholder={`Opción ${l.toUpperCase()}`}
-                className="px-4 py-2 rounded-xl bg-gray-50 border border-gray-200 outline-none focus:ring-2 focus:ring-orange-500" />
+              <div key={l} className="flex items-center gap-2">
+                <label className={`shrink-0 w-16 flex items-center gap-1.5 px-2 py-2 rounded-lg border cursor-pointer text-sm font-medium ${form.correctas.includes(l.toUpperCase()) ? 'bg-green-50 border-green-400 text-green-700' : 'bg-gray-50 border-gray-200 text-gray-500'}`}>
+                  <input type="checkbox" checked={form.correctas.includes(l.toUpperCase())} onChange={() => toggleCorrecta(l.toUpperCase())} />
+                  {l.toUpperCase()}
+                </label>
+                <input value={form[`opcion_${l}`]} onChange={set(`opcion_${l}`)} required placeholder={`Opción ${l.toUpperCase()}`}
+                  className="flex-1 px-4 py-2 rounded-xl bg-gray-50 border border-gray-200 outline-none focus:ring-2 focus:ring-orange-500" />
+              </div>
             ))}
           </div>
+          <p className="text-xs text-gray-400">Marca la casilla de cada opción correcta. Puede haber <strong>más de una</strong>.</p>
+
           <div className="flex flex-col sm:flex-row gap-3">
-            <select value={form.respuesta_correcta} onChange={set('respuesta_correcta')}
-              className="px-4 py-2 rounded-xl bg-gray-50 border border-gray-200 outline-none focus:ring-2 focus:ring-orange-500">
-              {['A', 'B', 'C', 'D'].map((l) => <option key={l} value={l}>Correcta: {l}</option>)}
-            </select>
             <input value={form.explicacion} onChange={set('explicacion')} placeholder="Explicación (opcional)"
               className="flex-1 px-4 py-2 rounded-xl bg-gray-50 border border-gray-200 outline-none focus:ring-2 focus:ring-orange-500" />
-            <button className="px-5 py-2 bg-orange-500 hover:bg-orange-600 text-white font-medium rounded-xl cursor-pointer">Añadir pregunta</button>
+            <button className="px-5 py-2 bg-orange-500 hover:bg-orange-600 text-white font-medium rounded-xl cursor-pointer">
+              {editandoId ? 'Guardar cambios' : 'Añadir pregunta'}
+            </button>
           </div>
           {aviso && <p className="text-sm text-red-600">{aviso}</p>}
         </form>
@@ -568,12 +657,17 @@ function PreguntasSection() {
         <div className="bg-white border border-gray-100 rounded-2xl shadow-sm divide-y divide-gray-100">
           {preguntas.length === 0 ? <p className="p-5 text-sm text-gray-400">Este test no tiene preguntas.</p> :
             preguntas.map((p) => (
-              <div key={p.id} className="p-4 flex justify-between items-start gap-3">
-                <div>
+              <div key={p.id} className={`p-4 flex justify-between items-start gap-3 ${editandoId === p.id ? 'bg-orange-50' : ''}`}>
+                <div className="min-w-0">
                   <p className="text-gray-800">{p.enunciado}</p>
-                  <p className="text-xs text-gray-400 mt-1">Correcta: {p.respuesta_correcta} · ID {p.id}</p>
+                  <p className="text-xs text-gray-400 mt-1">
+                    Correcta{(p.respuestas_correctas?.length || 0) > 1 ? 's' : ''}: {(p.respuestas_correctas || []).join(', ') || p.respuesta_correcta} · ID {p.id}
+                  </p>
                 </div>
-                <button onClick={() => borrar(p.id)} className="shrink-0 text-sm text-red-600 hover:bg-red-50 px-3 py-1.5 rounded-lg cursor-pointer">Eliminar</button>
+                <div className="flex gap-2 shrink-0">
+                  <button onClick={() => empezarEdicion(p)} className="text-sm text-orange-600 hover:bg-orange-50 px-3 py-1.5 rounded-lg cursor-pointer">Editar</button>
+                  <button onClick={() => borrar(p.id)} className="text-sm text-red-600 hover:bg-red-50 px-3 py-1.5 rounded-lg cursor-pointer">Eliminar</button>
+                </div>
               </div>
             ))}
         </div>

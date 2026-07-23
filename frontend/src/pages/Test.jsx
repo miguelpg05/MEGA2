@@ -18,7 +18,7 @@ export default function Test() {
 
   // Estados del juego
   const [indicePregunta, setIndicePregunta] = useState(0);
-  const [opcionSeleccionada, setOpcionSeleccionada] = useState(null);
+  const [opcionesSeleccionadas, setOpcionesSeleccionadas] = useState([]); // soporta varias correctas
   const [estadoRespuesta, setEstadoRespuesta] = useState(null);
   const [tiempoRestante, setTiempoRestante] = useState(120);
   
@@ -129,17 +129,36 @@ export default function Test() {
     return `${minutos}:${segundos < 10 ? '0' : ''}${segundos}`;
   };
 
+  // Respuestas correctas de la pregunta actual (siempre como lista)
+  const correctasDe = (pregunta) =>
+    pregunta.respuestasCorrectas && pregunta.respuestasCorrectas.length
+      ? pregunta.respuestasCorrectas
+      : [pregunta.respuestaCorrecta];
+
   const manejarSeleccion = (opcion) => {
-    if (estadoRespuesta) return; 
-    setOpcionSeleccionada(opcion);
+    if (estadoRespuesta) return;
+    const preguntaActual = preguntasTest[indicePregunta];
+    if (preguntaActual.multiple) {
+      // Varias correctas: alternar la opción
+      setOpcionesSeleccionadas((prev) =>
+        prev.includes(opcion) ? prev.filter((o) => o !== opcion) : [...prev, opcion]
+      );
+    } else {
+      // Una sola correcta: comportamiento de selección única
+      setOpcionesSeleccionadas([opcion]);
+    }
   };
 
   const comprobarRespuesta = async () => {
-    if (!opcionSeleccionada) return;
-    
+    if (opcionesSeleccionadas.length === 0) return;
+
     const preguntaActual = preguntasTest[indicePregunta];
-    const esCorrecta = opcionSeleccionada === preguntaActual.respuestaCorrecta;
-    
+    const correctas = correctasDe(preguntaActual);
+    // Correcta solo si el conjunto marcado coincide EXACTAMENTE con el correcto
+    const esCorrecta =
+      opcionesSeleccionadas.length === correctas.length &&
+      correctas.every((c) => opcionesSeleccionadas.includes(c));
+
     setEstadoRespuesta(esCorrecta ? 'correcta' : 'incorrecta');
     if (esCorrecta) setAciertos(prev => prev + 1);
 
@@ -163,7 +182,7 @@ export default function Test() {
   const siguientePregunta = () => {
     if (indicePregunta + 1 < preguntasTest.length) {
       setIndicePregunta(indicePregunta + 1);
-      setOpcionSeleccionada(null);
+      setOpcionesSeleccionadas([]);
       setEstadoRespuesta(null);
       setMostrarFlashcard(false);
       setFlashcardVolteada(false);
@@ -263,23 +282,33 @@ export default function Test() {
       </div>
 
       <div className="w-full max-w-3xl bg-white rounded-3xl shadow-sm border border-gray-100 p-8 md:p-12">
-        <h2 className="text-2xl md:text-3xl font-medium text-gray-800 mb-8 leading-snug">{preguntaActual.pregunta}</h2>
+        <h2 className="text-2xl md:text-3xl font-medium text-gray-800 mb-3 leading-snug">{preguntaActual.pregunta}</h2>
+        {preguntaActual.multiple && (
+          <p className="text-sm text-orange-600 font-medium mb-6">✓ Puede haber más de una respuesta correcta. Selecciona todas.</p>
+        )}
 
-        <div className="flex flex-col gap-3 mb-8">
+        <div className="flex flex-col gap-3 mb-8 mt-4">
           {preguntaActual.opciones.map((opcion, index) => {
+            const esCorrecta = correctasDe(preguntaActual).includes(opcion);
+            const estaSeleccionada = opcionesSeleccionadas.includes(opcion);
             let estilosOpcion = "border-gray-200 hover:border-orange-500 hover:bg-orange-50 text-gray-700";
             if (estadoRespuesta) {
-              if (opcion === preguntaActual.respuestaCorrecta) estilosOpcion = "border-green-500 bg-green-50 text-green-800 font-medium";
-              else if (opcion === opcionSeleccionada && estadoRespuesta === 'incorrecta') estilosOpcion = "border-red-400 bg-red-50 text-red-700";
+              if (esCorrecta) estilosOpcion = "border-green-500 bg-green-50 text-green-800 font-medium";
+              else if (estaSeleccionada) estilosOpcion = "border-red-400 bg-red-50 text-red-700";
               else estilosOpcion = "border-gray-100 text-gray-400 opacity-60";
-            } else if (opcion === opcionSeleccionada) {
+            } else if (estaSeleccionada) {
               estilosOpcion = "border-orange-500 bg-orange-50 text-orange-700 font-medium ring-1 ring-orange-500";
             }
 
             return (
-              <button key={index} onClick={() => manejarSeleccion(opcion)} className={`w-full text-left p-4 rounded-xl border-2 transition-all duration-200 cursor-pointer ${estilosOpcion}`}>
-                <span className="inline-block w-8 font-semibold opacity-60">{['A', 'B', 'C', 'D'][index]}.</span>
-                {opcion}
+              <button key={index} onClick={() => manejarSeleccion(opcion)} className={`w-full text-left p-4 rounded-xl border-2 transition-all duration-200 cursor-pointer flex items-center gap-3 ${estilosOpcion}`}>
+                {preguntaActual.multiple && (
+                  <span className={`shrink-0 w-5 h-5 rounded border flex items-center justify-center text-xs ${estaSeleccionada ? 'bg-orange-500 border-orange-500 text-white' : 'border-gray-300'}`}>
+                    {estaSeleccionada ? '✓' : ''}
+                  </span>
+                )}
+                <span className="inline-block w-6 font-semibold opacity-60">{['A', 'B', 'C', 'D'][index]}.</span>
+                <span className="flex-1">{opcion}</span>
               </button>
             );
           })}
@@ -288,7 +317,7 @@ export default function Test() {
         <div className="min-h-20">
           {!estadoRespuesta ? (
             <div className="flex justify-end">
-              <button onClick={comprobarRespuesta} disabled={!opcionSeleccionada} className={`px-8 py-3 rounded-xl font-medium transition-colors ${opcionSeleccionada ? 'bg-orange-500 hover:bg-orange-600 text-white cursor-pointer shadow-md shadow-orange-500/20' : 'bg-gray-100 text-gray-400 cursor-not-allowed'}`}>Comprobar</button>
+              <button onClick={comprobarRespuesta} disabled={opcionesSeleccionadas.length === 0} className={`px-8 py-3 rounded-xl font-medium transition-colors ${opcionesSeleccionadas.length > 0 ? 'bg-orange-500 hover:bg-orange-600 text-white cursor-pointer shadow-md shadow-orange-500/20' : 'bg-gray-100 text-gray-400 cursor-not-allowed'}`}>Comprobar</button>
             </div>
           ) : (
             <div className="animate-fade-in flex flex-col gap-4">
@@ -333,8 +362,8 @@ export default function Test() {
               ) : (
                 
                 <div className="text-center animate-fade-in w-full">
-                  <span className="block text-xs text-orange-400 mb-2 font-medium">Respuesta Clave</span>
-                  <p className="text-xl text-orange-600 font-bold mb-3">{preguntaActual.respuestaCorrecta}</p>
+                  <span className="block text-xs text-orange-400 mb-2 font-medium">Respuesta{correctasDe(preguntaActual).length > 1 ? 's' : ''} Clave</span>
+                  <p className="text-xl text-orange-600 font-bold mb-3">{correctasDe(preguntaActual).join(' · ')}</p>
                   
                   <div className="bg-white/60 p-3 rounded-lg text-sm text-gray-600 italic text-left">
                     💡 <span className="font-semibold">Explicación:</span> {preguntaActual.explicacion}

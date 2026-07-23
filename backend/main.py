@@ -19,7 +19,7 @@ from schemas import (
     RepasoCompletado,
     EsquemaRequest,
 )
-from services.preguntas import texto_opcion_correcta
+from services.preguntas import texto_opcion_correcta, textos_correctos
 
 # Monitorización de errores con Sentry (opcional: solo si se define SENTRY_DSN)
 SENTRY_DSN = os.getenv("SENTRY_DSN")
@@ -174,11 +174,14 @@ def obtener_repasos(usuario: Usuario = Depends(get_current_user), db: Session = 
         p = db.query(Pregunta).filter(Pregunta.id == fallo.pregunta_id).first()
         if p:
             opciones = [opt for opt in [p.opcion_a, p.opcion_b, p.opcion_c, p.opcion_d] if opt]
+            correctas = textos_correctos(p)
             preguntas_repaso.append({
                 "fallo_id": fallo.id,
                 "pregunta": p.enunciado,
                 "opciones": opciones,
-                "respuestaCorrecta": texto_opcion_correcta(p),
+                "respuestaCorrecta": texto_opcion_correcta(p),   # compatibilidad
+                "respuestasCorrectas": correctas,
+                "multiple": len(correctas) > 1,
                 "explicacion": p.explicacion or "Sin explicación."
             })
     return preguntas_repaso

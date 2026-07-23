@@ -8,7 +8,7 @@ from collections import defaultdict
 
 from models import get_db, TestPlantilla, TestIntento, Pregunta, Usuario
 from routers.auth import get_current_user
-from services.preguntas import texto_opcion_correcta
+from services.preguntas import texto_opcion_correcta, textos_correctos
 
 router = APIRouter(prefix="/api/test", tags=["Progreso de Tests"])
 
@@ -30,15 +30,16 @@ def generar_test_exacto(test_plantilla_id: int, usuario: Usuario = Depends(get_c
     
     test_formateado = []
     for p in preguntas_db:
-        # `texto_opcion_correcta` es la única fuente de verdad para traducir la
-        # respuesta correcta (letra canónica A–D o texto antiguo) a su texto.
         opciones_lista = [p.opcion_a, p.opcion_b, p.opcion_c, p.opcion_d]
+        correctas = textos_correctos(p)  # lista (una o varias)
 
         test_formateado.append({
             "id": p.id,
             "pregunta": p.enunciado,
             "opciones": opciones_lista,
-            "respuestaCorrecta": texto_opcion_correcta(p),
+            "respuestaCorrecta": texto_opcion_correcta(p),   # compatibilidad (la primera)
+            "respuestasCorrectas": correctas,                 # todas las correctas
+            "multiple": len(correctas) > 1,
             "explicacion": p.explicacion or "Consulta el temario para más detalle."
         })
         

@@ -8,8 +8,13 @@ from types import SimpleNamespace
 
 from services.preguntas import (
     es_letra_opcion,
+    es_codigo_letras,
+    parse_letras,
     normalizar_letra,
+    normalizar_respuesta,
     letra_de_texto,
+    letras_correctas,
+    textos_correctos,
     texto_opcion_correcta,
 )
 
@@ -77,3 +82,42 @@ def test_regresion_bug_no_devuelve_primera_opcion_por_error():
     p = _pregunta(respuesta_correcta="B")
     assert texto_opcion_correcta(p) != p.opcion_a
     assert texto_opcion_correcta(p) == p.opcion_b
+
+
+# --- MÚLTIPLES RESPUESTAS CORRECTAS ---
+def test_es_codigo_letras_distingue_codigo_de_texto():
+    assert es_codigo_letras("A")
+    assert es_codigo_letras("AC")
+    assert es_codigo_letras("A,C")
+    assert es_codigo_letras("b)")
+    assert not es_codigo_letras("El Rey")
+    assert not es_codigo_letras("La villa de Madrid")  # contiene A/D pero es texto
+    assert not es_codigo_letras("")
+
+
+def test_parse_letras_ordena_y_deduplica():
+    assert parse_letras("CA") == ["A", "C"]
+    assert parse_letras("A,C") == ["A", "C"]
+    assert parse_letras("AAC") == ["A", "C"]
+    assert parse_letras("ABCD") == ["A", "B", "C", "D"]
+
+
+def test_normalizar_respuesta_forma_canonica():
+    assert normalizar_respuesta("a c") == "AC"
+    assert normalizar_respuesta("C,A") == "AC"
+    assert normalizar_respuesta("b") == "B"
+    assert normalizar_respuesta("") == ""
+    assert normalizar_respuesta("xyz ñ 123") == ""
+
+
+def test_letras_y_textos_correctos_varias():
+    p = _pregunta(respuesta_correcta="AC")
+    assert letras_correctas(p) == ["A", "C"]
+    assert textos_correctos(p) == [p.opcion_a, p.opcion_c]
+
+
+def test_una_sola_correcta_sigue_funcionando():
+    p = _pregunta(respuesta_correcta="D")
+    assert letras_correctas(p) == ["D"]
+    assert textos_correctos(p) == [p.opcion_d]
+    assert texto_opcion_correcta(p) == p.opcion_d

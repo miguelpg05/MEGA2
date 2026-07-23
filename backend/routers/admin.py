@@ -39,7 +39,7 @@ from routers.auth import (
     verificar_acceso_curso,
     ROLES_VALIDOS,
 )
-from services.preguntas import normalizar_letra
+from services.preguntas import normalizar_respuesta, letras_correctas
 
 router = APIRouter(prefix="/api/admin", tags=["Administración"])
 
@@ -268,6 +268,28 @@ def crear_test(datos: TestPlantillaIn, usuario: Usuario = Depends(require_gestor
     db.refresh(test)
     return test
 
+@router.put("/tests/{test_id}")
+def editar_test(test_id: int, datos: TestPlantillaIn, usuario: Usuario = Depends(require_gestor), db: Session = Depends(get_db)):
+    test = db.query(TestPlantilla).filter(TestPlantilla.id == test_id).first()
+    if not test:
+        raise HTTPException(status_code=404, detail="Test no encontrado")
+    # Acceso al curso actual y al de destino
+    verificar_acceso_curso(usuario, _tema_o_404(db, test.tema_id).curso_id)
+    verificar_acceso_curso(usuario, _tema_o_404(db, datos.tema_id).curso_id)
+    # Evitar duplicar el número de test en otra plantilla
+    otro = db.query(TestPlantilla).filter(
+        TestPlantilla.numero_test == datos.numero_test.strip(),
+        TestPlantilla.id != test_id,
+    ).first()
+    if otro:
+        raise HTTPException(status_code=400, detail="Ya existe otro test con ese número")
+    test.numero_test = datos.numero_test.strip()
+    test.tema_id = datos.tema_id
+    test.total_preguntas = datos.total_preguntas
+    db.commit()
+    db.refresh(test)
+    return test
+
 @router.delete("/tests/{test_id}")
 def borrar_test(test_id: int, usuario: Usuario = Depends(require_gestor), db: Session = Depends(get_db)):
     test = db.query(TestPlantilla).filter(TestPlantilla.id == test_id).first()
@@ -282,6 +304,28 @@ def borrar_test(test_id: int, usuario: Usuario = Depends(require_gestor), db: Se
 # ==========================================
 # PREGUNTAS
 # ==========================================
+def _pregunta_dict(p: Pregunta) -> dict:
+    return {
+        "id": p.id,
+        "enunciado": p.enunciado,
+        "opcion_a": p.opcion_a,
+        "opcion_b": p.opcion_b,
+        "opcion_c": p.opcion_c,
+        "opcion_d": p.opcion_d,
+        "respuesta_correcta": p.respuesta_correcta,      # código canónico, p. ej. "AC"
+        "respuestas_correctas": letras_correctas(p),     # lista, p. ej. ["A", "C"]
+        "explicacion": p.explicacion,
+        "tema_id": p.tema_id,
+        "test_plantilla_id": p.test_plantilla_id,
+    }
+
+def _validar_respuesta(datos: PreguntaIn) -> str:
+    """Normaliza y valida las letras correctas (una o varias)."""
+    codigo = normalizar_respuesta(datos.respuesta_correcta)
+    if not codigo:
+        raise HTTPException(status_code=400, detail="Indica al menos una respuesta correcta (A, B, C o D).")
+    return codigo
+
 @router.get("/preguntas")
 def listar_preguntas(
     test_plantilla_id: int = Query(None),
@@ -298,7 +342,7 @@ def listar_preguntas(
     if tema_id:
         verificar_acceso_curso(usuario, _tema_o_404(db, tema_id).curso_id)
         query = query.filter(Pregunta.tema_id == tema_id)
-    return query.order_by(Pregunta.id).all()
+    return [_pregunta_dict(p) for p in query.order_by(Pregunta.id).all()]
 
 @router.post("/preguntas")
 def crear_pregunta(datos: PreguntaIn, usuario: Usuario = Depends(require_gestor), db: Session = Depends(get_db)):
@@ -309,7 +353,7 @@ def crear_pregunta(datos: PreguntaIn, usuario: Usuario = Depends(require_gestor)
         opcion_b=datos.opcion_b.strip(),
         opcion_c=datos.opcion_c.strip(),
         opcion_d=datos.opcion_d.strip(),
-        respuesta_correcta=normalizar_letra(datos.respuesta_correcta),
+        respuesta_correcta=_validar_respuesta(datos),
         explicacion=(datos.explicacion or "").strip() or None,
         tema_id=datos.tema_id,
         test_plantilla_id=datos.test_plantilla_id,
@@ -317,7 +361,7 @@ def crear_pregunta(datos: PreguntaIn, usuario: Usuario = Depends(require_gestor)
     db.add(pregunta)
     db.commit()
     db.refresh(pregunta)
-    return pregunta
+    return _pregunta_dict(pregunta)
 
 @router.put("/preguntas/{pregunta_id}")
 def editar_pregunta(pregunta_id: int, datos: PreguntaIn, usuario: Usuario = Depends(require_gestor), db: Session = Depends(get_db)):
@@ -331,13 +375,13 @@ def editar_pregunta(pregunta_id: int, datos: PreguntaIn, usuario: Usuario = Depe
     pregunta.opcion_b = datos.opcion_b.strip()
     pregunta.opcion_c = datos.opcion_c.strip()
     pregunta.opcion_d = datos.opcion_d.strip()
-    pregunta.respuesta_correcta = normalizar_letra(datos.respuesta_correcta)
+    pregunta.respuesta_correcta = _validar_respuesta(datos)
     pregunta.explicacion = (datos.explicacion or "").strip() or None
     pregunta.tema_id = datos.tema_id
     pregunta.test_plantilla_id = datos.test_plantilla_id
     db.commit()
     db.refresh(pregunta)
-    return pregunta
+    return _pregunta_dict(pregunta)
 
 @router.delete("/preguntas/{pregunta_id}")
 def borrar_pregunta(pregunta_id: int, usuario: Usuario = Depends(require_gestor), db: Session = Depends(get_db)):
@@ -420,7 +464,7 @@ async def importar_preguntas(
                 opcion_b=str(fila["opcion_b"]).strip(),
                 opcion_c=str(fila["opcion_c"]).strip(),
                 opcion_d=str(fila["opcion_d"]).strip(),
-                respuesta_correcta=normalizar_letra(fila["respuesta_correcta"]),
+                respuesta_correcta=(normalizar_respuesta(fila["respuesta_correcta"]) or "A"),
                 explicacion=(str(fila.get("explicacion") or "").strip() or "Consulta el temario para más detalle."),
             ))
             creadas += 1

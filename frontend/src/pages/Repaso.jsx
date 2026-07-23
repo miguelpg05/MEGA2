@@ -42,12 +42,19 @@ export default function Repaso() {
     cargarPendientes();
   };
 
+  // Respuestas correctas de la carta (siempre como lista)
+  const correctasDe = (carta) =>
+    carta.respuestasCorrectas && carta.respuestasCorrectas.length
+      ? carta.respuestasCorrectas
+      : [carta.respuestaCorrecta];
+
   const comprobarRespuesta = async (opcionElegida) => {
     if (estadoRespuesta) return;
 
     setOpcionSeleccionada(opcionElegida);
     const cartaActual = flashcards[indiceActual];
-    const esCorrecta = opcionElegida === cartaActual.respuestaCorrecta;
+    // En el repaso (revisión de fallos) basta con identificar una opción correcta.
+    const esCorrecta = correctasDe(cartaActual).includes(opcionElegida);
 
     setEstadoRespuesta(esCorrecta ? 'correcta' : 'incorrecta');
 
@@ -144,7 +151,7 @@ export default function Repaso() {
             let estilosOpcion = "border-gray-200 hover:border-orange-500 hover:bg-orange-50 text-gray-700 cursor-pointer";
             
             if (estadoRespuesta) {
-              if (opcion === cartaActual.respuestaCorrecta) estilosOpcion = "border-green-500 bg-green-50 text-green-800 font-medium";
+              if (correctasDe(cartaActual).includes(opcion)) estilosOpcion = "border-green-500 bg-green-50 text-green-800 font-medium";
               else if (opcion === opcionSeleccionada && estadoRespuesta === 'incorrecta') estilosOpcion = "border-red-400 bg-red-50 text-red-700";
               else estilosOpcion = "border-gray-100 text-gray-400 opacity-60 cursor-default";
             }
