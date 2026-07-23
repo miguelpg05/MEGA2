@@ -11,7 +11,7 @@ SaaS didáctico para una academia. Los alumnos hacen tests por temas, reciben re
 - **Frontend**: React 19 + Vite 7 + Tailwind 4 + React Router 7 → desplegado en **Vercel**.
 - **Backend**: FastAPI + SQLAlchemy → desplegado en **Render**.
 - **Base de datos**: PostgreSQL en **Neon**.
-- **IA**: Google Gemini (`gemini-2.5-flash`) para resúmenes y esquemas Mermaid.
+- **IA**: capa intercambiable (`services/ia.py`, `generar_texto()`), seleccionable con `IA_PROVIDER`: **Groq** (Llama 3.3, por defecto) o **Gemini**. Genera resúmenes y esquemas (mapa mental Mermaid construido desde un JSON).
 - **Auth**: dos vías, ambas restringidas a `@academiamega.net`: **email+contraseña** (registro/login) y **Google** (OAuth2 con selector de cuenta forzado `prompt=select_account`; el backend valida el `access_token` contra `tokeninfo` comprobando `aud`/`azp` = nuestro client_id). La sesión se gestiona con un JWT propio + `sesion_id` (sesión única por usuario). En el front, la sesión se valida contra `/api/auth/me` vía `AuthContext`. El rol se promociona según `ADMIN_EMAILS`/`PROFESOR_EMAILS`.
 - **Repo**: `https://github.com/miguelpg05/WebMEGA.git` (rama principal `main`).
 
@@ -78,7 +78,9 @@ npm run lint
 **Backend** (`backend/.env` en local; en Render como Environment):
 - `DATABASE_URL` — cadena Postgres de Neon. **Usar el host con `-pooler`** (connection pooling) para soportar concurrencia.
 - `SECRET_KEY` — clave larga y aleatoria para firmar JWT. **Obligatoria en producción** (ver §7, hoy tiene un default inseguro).
-- `GEMINI_API_KEY`
+- `IA_PROVIDER` — `groq` (por defecto) o `gemini`. Groq es gratis y con límites más altos.
+- `GROQ_API_KEY` / `GROQ_MODEL` — clave de Groq (console.groq.com) y modelo (`llama-3.3-70b-versatile`).
+- `GEMINI_API_KEY` / `GEMINI_MODEL` — solo si `IA_PROVIDER=gemini`.
 - `GOOGLE_CLIENT_ID` — client ID de Google OAuth.
 - `GOOGLE_HOSTED_DOMAIN` — `academiamega.net`.
 - `ADMIN_EMAILS` — emails (separados por comas) que se promocionan a **`superadmin`** al iniciar sesión. **Bootstrap del primer jefe**: pon tu email aquí.

@@ -6,7 +6,6 @@ from fastapi import FastAPI, Depends, HTTPException, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 from sqlalchemy.orm import Session
-from google import genai
 
 # Modelos, routers y utilidades
 from models import get_db, Pregunta, Puntuacion, RegistroFallo, Usuario, IALlamada, Tema, MaterialTema
@@ -21,6 +20,7 @@ from schemas import (
 )
 from services.preguntas import texto_opcion_correcta, textos_correctos
 from services.esquema import construir_mindmap, extraer_json, extraer_texto_pdf
+from services.ia import generar_texto, IAError
 
 # Monitorización de errores con Sentry (opcional: solo si se define SENTRY_DSN)
 SENTRY_DSN = os.getenv("SENTRY_DSN")
@@ -33,13 +33,9 @@ if SENTRY_DSN:
         print(f"⚠️ No se pudo inicializar Sentry: {e}")
 
 
-def _registrar_uso_ia(db: Session, usuario_id: int, tipo: str, response) -> None:
-    """Guarda un registro de la llamada a Gemini para dar visibilidad de uso/coste."""
+def _registrar_uso_ia(db: Session, usuario_id: int, tipo: str, tokens=None) -> None:
+    """Registra una llamada a la IA para dar visibilidad de uso/coste."""
     try:
-        tokens = None
-        meta = getattr(response, "usage_metadata", None)
-        if meta is not None:
-            tokens = getattr(meta, "total_token_count", None)
         db.add(IALlamada(usuario_id=usuario_id, tipo=tipo, tokens_totales=tokens, fecha=datetime.utcnow()))
         db.commit()
     except Exception as e:
@@ -98,8 +94,6 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-GEMINI_API_KEY = os.getenv("GEMINI_API_KEY")
-
 # ==========================================
 # 3. INCLUSIÓN DE RUTAS EXTERNAS
 # ==========================================
@@ -130,11 +124,7 @@ def registrar_fallo(datos: FalloRequest, usuario: Usuario = Depends(get_current_
 
 @app.post("/api/ia/resumir")
 def generar_resumen_ia(datos: ResumenRequest, usuario: Usuario = Depends(get_current_user), db: Session = Depends(get_db)):
-    if not GEMINI_API_KEY:
-        raise HTTPException(status_code=500, detail="La IA no está configurada en el servidor (falta GEMINI_API_KEY).")
-
     contenido, fuente = _contenido_fuente(datos, usuario, db)
-    modelo = os.getenv("GEMINI_MODEL", "gemini-2.5-flash")
 
     if contenido:
         base = (
@@ -161,19 +151,11 @@ Da el resultado en **Markdown** bien estructurado y fácil de memorizar:
 Escribe en español, claro y directo. No añadas comentarios sobre ti mismo ni sobre el formato.{bloque_contenido}
 """
     try:
-        client = genai.Client(api_key=GEMINI_API_KEY)
-        response = client.models.generate_content(model=modelo, contents=prompt)
-    except Exception as e:
-        print(f"❌ Resumen: fallo al llamar a Gemini (modelo={modelo}): {e!r}")
-        raise HTTPException(status_code=502, detail=f"La IA no respondió (modelo {modelo}): {str(e)[:300]}")
+        texto, tokens = generar_texto(prompt)
+    except IAError as e:
+        raise HTTPException(status_code=e.status, detail=e.mensaje)
 
-    _registrar_uso_ia(db, usuario.id, "resumen", response)
-    try:
-        texto = response.text or ""
-    except Exception as e:
-        print(f"❌ Resumen: no se pudo leer response.text: {e!r}")
-        raise HTTPException(status_code=502, detail="La IA no devolvió texto. Inténtalo de nuevo.")
-
+    _registrar_uso_ia(db, usuario.id, "resumen", tokens)
     return {"resumen": texto, "fuente": fuente}
 
 @app.post("/api/ranking/guardar")
@@ -279,9 +261,6 @@ def _contenido_fuente(datos, usuario: Usuario, db: Session):
 
 @app.post("/api/ia/esquema")
 def generar_esquema_ia(datos: EsquemaRequest, usuario: Usuario = Depends(get_current_user), db: Session = Depends(get_db)):
-    if not GEMINI_API_KEY:
-        raise HTTPException(status_code=500, detail="La IA no está configurada en el servidor (falta GEMINI_API_KEY).")
-
     contenido, fuente = _contenido_fuente(datos, usuario, db)
 
     base = (
@@ -303,29 +282,19 @@ Reglas: máximo 6 ramas; máximo 8 hijos por rama; cada texto de 5 palabras como
 máximo; en español; sin comillas ni paréntesis dentro de los textos.
 {("CONTENIDO:\\n" + contenido) if contenido else ""}
 """
-    modelo = os.getenv("GEMINI_MODEL", "gemini-2.5-flash")
-
-    # 1) Llamada al modelo
+    # 1) Llamada a la IA (JSON)
     try:
-        client = genai.Client(api_key=GEMINI_API_KEY)
-        response = client.models.generate_content(model=modelo, contents=prompt)
-    except Exception as e:
-        print(f"❌ Esquema: fallo al llamar a Gemini (modelo={modelo}): {e!r}")
-        raise HTTPException(status_code=502, detail=f"La IA no respondió (modelo {modelo}): {str(e)[:300]}")
+        texto_ia, tokens = generar_texto(prompt, json_mode=True)
+    except IAError as e:
+        raise HTTPException(status_code=e.status, detail=e.mensaje)
 
-    _registrar_uso_ia(db, usuario.id, "esquema", response)
+    _registrar_uso_ia(db, usuario.id, "esquema", tokens)
 
-    # 2) Procesado de la respuesta a un mindmap válido
-    try:
-        texto_ia = response.text or ""
-    except Exception as e:
-        print(f"❌ Esquema: no se pudo leer response.text: {e!r}")
-        raise HTTPException(status_code=502, detail=f"La IA no devolvió texto: {str(e)[:200]}")
-
+    # 2) Procesado de la respuesta a un mindmap SIEMPRE válido
     try:
         data = extraer_json(texto_ia)
         codigo = construir_mindmap(data)
         return {"esquema_codigo": codigo, "fuente": fuente}
     except Exception as e:
         print(f"❌ Esquema: respuesta no parseable: {e!r} | texto={texto_ia[:300]!r}")
-        raise HTTPException(status_code=502, detail=f"Formato inesperado de la IA: {str(e)[:150]} · respuesta: {texto_ia[:150]}")
+        raise HTTPException(status_code=502, detail="La IA devolvió un formato inesperado. Inténtalo de nuevo.")
