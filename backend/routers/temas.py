@@ -56,6 +56,31 @@ def listar_temas_del_usuario(
     ]
 
 
+@router.get("/materiales")
+def listar_todos_los_materiales(
+    usuario: Usuario = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    """Todos los PDFs a los que el usuario tiene acceso (para elegir en el resumen).
+    Incluye el nombre del tema al que pertenece cada uno."""
+    query = db.query(MaterialTema).join(Tema, Tema.id == MaterialTema.tema_id)
+    if not es_superadmin(usuario):
+        ids_cursos = [c.id for c in usuario.cursos]
+        if ids_cursos:
+            query = query.filter(or_(Tema.curso_id.in_(ids_cursos), Tema.curso_id.is_(None)))
+        else:
+            query = query.filter(Tema.curso_id.is_(None))
+    return [
+        {
+            "id": m.id,
+            "nombre_archivo": m.nombre_archivo,
+            "tema_id": m.tema_id,
+            "tema_nombre": m.tema.nombre if m.tema else None,
+        }
+        for m in query.order_by(MaterialTema.tema_id, MaterialTema.id).all()
+    ]
+
+
 @router.get("/{tema_id}/materiales")
 def listar_materiales_del_tema(
     tema_id: int,

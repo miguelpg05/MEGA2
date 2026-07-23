@@ -130,23 +130,51 @@ def registrar_fallo(datos: FalloRequest, usuario: Usuario = Depends(get_current_
 
 @app.post("/api/ia/resumir")
 def generar_resumen_ia(datos: ResumenRequest, usuario: Usuario = Depends(get_current_user), db: Session = Depends(get_db)):
-    client = genai.Client(api_key=GEMINI_API_KEY)
-    prompt = f"""
-    Actúa como un preparador de oposiciones experto.
-    Tu alumno tiene un nivel {datos.nivel} y dispone de solo {datos.tiempo} minutos.
-    Genera un resumen ejecutivo, claro y con puntos clave sobre: {datos.tema}.
-    Usa un lenguaje motivador y directo. Formatea con puntos y negritas.
-    """
-    try:
-        response = client.models.generate_content(
-            model='gemini-2.5-flash',
-            contents=prompt
+    if not GEMINI_API_KEY:
+        raise HTTPException(status_code=500, detail="La IA no está configurada en el servidor (falta GEMINI_API_KEY).")
+
+    contenido, fuente = _contenido_fuente(datos, usuario, db)
+    modelo = os.getenv("GEMINI_MODEL", "gemini-2.5-flash")
+
+    if contenido:
+        base = (
+            f'Resume para estudiar el CONTENIDO que te doy (procedente de {fuente}), '
+            f'sobre "{datos.tema}". Cíñete a ese contenido; no inventes datos que no aparezcan.'
         )
-        _registrar_uso_ia(db, usuario.id, "resumen", response)
-        return {"resumen": response.text}
+        bloque_contenido = f"\n\nCONTENIDO:\n{contenido}"
+    else:
+        base = f'Genera un resumen de estudio sobre: "{datos.tema}".'
+        bloque_contenido = ""
+
+    prompt = f"""Actúa como un preparador de oposiciones experto en síntesis.
+{base}
+
+El alumno tiene un nivel {datos.nivel} y dispone de {datos.tiempo} minutos para repasar.
+Ajusta la extensión y la profundidad a ese tiempo.
+
+Da el resultado en **Markdown** bien estructurado y fácil de memorizar:
+- Empieza con una frase de contexto (1 línea).
+- Divide en secciones con encabezados (## Título).
+- Usa listas con viñetas y **negrita** en los términos clave.
+- Incluye los datos concretos importantes (artículos, plazos, cifras, nombres) cuando existan.
+- Cierra con "### 🔑 Claves para recordar": 3-5 puntos o reglas mnemotécnicas.
+Escribe en español, claro y directo. No añadas comentarios sobre ti mismo ni sobre el formato.{bloque_contenido}
+"""
+    try:
+        client = genai.Client(api_key=GEMINI_API_KEY)
+        response = client.models.generate_content(model=modelo, contents=prompt)
     except Exception as e:
-        print(f"Error detallado de Gemini: {e}")
-        return {"resumen": "Error en la conexión con la IA. Revisa la consola."}
+        print(f"❌ Resumen: fallo al llamar a Gemini (modelo={modelo}): {e!r}")
+        raise HTTPException(status_code=502, detail=f"La IA no respondió (modelo {modelo}): {str(e)[:300]}")
+
+    _registrar_uso_ia(db, usuario.id, "resumen", response)
+    try:
+        texto = response.text or ""
+    except Exception as e:
+        print(f"❌ Resumen: no se pudo leer response.text: {e!r}")
+        raise HTTPException(status_code=502, detail="La IA no devolvió texto. Inténtalo de nuevo.")
+
+    return {"resumen": texto, "fuente": fuente}
 
 @app.post("/api/ranking/guardar")
 def guardar_puntos(datos: PuntosRequest, usuario: Usuario = Depends(get_current_user), db: Session = Depends(get_db)):
@@ -204,9 +232,10 @@ def _tema_accesible_para(usuario: Usuario, tema: Tema) -> bool:
     return tema.curso_id is None or tema.curso_id in [c.id for c in usuario.cursos]
 
 
-def _contenido_para_esquema(datos: EsquemaRequest, usuario: Usuario, db: Session):
+def _contenido_fuente(datos, usuario: Usuario, db: Session):
     """Devuelve (texto_fuente, descripcion_fuente) según lo que el usuario haya
-    elegido: texto libre, un PDF del tema, o solo el nombre del tema."""
+    elegido: texto libre, un PDF del tema, o solo el nombre del tema.
+    Compartido por el esquema y el resumen (ambos aceptan texto/material_id)."""
     if datos.texto and datos.texto.strip():
         return datos.texto.strip()[:18000], "el texto proporcionado"
 
@@ -230,7 +259,7 @@ def generar_esquema_ia(datos: EsquemaRequest, usuario: Usuario = Depends(get_cur
     if not GEMINI_API_KEY:
         raise HTTPException(status_code=500, detail="La IA no está configurada en el servidor (falta GEMINI_API_KEY).")
 
-    contenido, fuente = _contenido_para_esquema(datos, usuario, db)
+    contenido, fuente = _contenido_fuente(datos, usuario, db)
 
     base = (
         f'Basándote en {fuente}, sobre el tema "{datos.tema_nombre}",'

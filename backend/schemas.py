@@ -52,7 +52,11 @@ class FalloRequest(BaseModel):
 class ResumenRequest(BaseModel):
     tiempo: int
     nivel: str
-    tema: str
+    tema: str  # etiqueta/título para el prompt
+    tema_nombre: Optional[str] = None
+    tema_id: Optional[int] = None
+    material_id: Optional[int] = None  # PDF sobre el que basar el resumen
+    texto: Optional[str] = None        # texto libre aportado por el usuario
 
 class PuntosRequest(BaseModel):
     puntos: int
