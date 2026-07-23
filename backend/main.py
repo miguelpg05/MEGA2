@@ -184,18 +184,29 @@ Escribe en español, claro y didáctico. No añadas comentarios sobre ti mismo n
 
 @app.post("/api/ranking/guardar")
 def guardar_puntos(datos: PuntosRequest, usuario: Usuario = Depends(get_current_user), db: Session = Depends(get_db)):
-    nueva_puntuacion = Puntuacion(
-        alumno_nombre=usuario.nombre,
-        puntos=datos.puntos,
-        fecha=datetime.now().strftime("%Y-%m-%d")
-    )
-    db.add(nueva_puntuacion)
+    # UNA fila por usuario: si ya existe, acumulamos; si no, la creamos.
+    fila = db.query(Puntuacion).filter(Puntuacion.usuario_id == usuario.id).first()
+    hoy = datetime.now().strftime("%Y-%m-%d")
+    if fila:
+        fila.puntos = (fila.puntos or 0) + datos.puntos
+        fila.alumno_nombre = usuario.nombre  # mantener el nombre al día
+        fila.fecha = hoy
+    else:
+        fila = Puntuacion(usuario_id=usuario.id, alumno_nombre=usuario.nombre, puntos=datos.puntos, fecha=hoy)
+        db.add(fila)
     db.commit()
-    return {"mensaje": "Puntuación registrada"}
+    return {"mensaje": "Puntuación registrada", "puntos_totales": fila.puntos}
 
 @app.get("/api/ranking/clase")
 def obtener_ranking(db: Session = Depends(get_db)):
-    return db.query(Puntuacion).order_by(Puntuacion.puntos.desc()).limit(5).all()
+    # Solo el ranking acumulativo por usuario (ignora filas antiguas sin usuario_id)
+    return (
+        db.query(Puntuacion)
+        .filter(Puntuacion.usuario_id.isnot(None))
+        .order_by(Puntuacion.puntos.desc())
+        .limit(5)
+        .all()
+    )
 
 @app.get("/api/repaso/pendientes")
 def obtener_repasos(usuario: Usuario = Depends(get_current_user), db: Session = Depends(get_db)):

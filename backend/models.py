@@ -110,14 +110,15 @@ class RegistroFallo(Base):
     pregunta_id = Column(Integer, ForeignKey("preguntas.id"))
     repasada = Column(Boolean, default=False) # Si está a False, saldrá en el próximo "test de repaso"
 
-# 4. Tabla de Puntuaciones (Para Rankings)
+# 4. Tabla de Puntuaciones (Para Rankings) — UNA fila por usuario (acumulativo)
 class Puntuacion(Base):
     __tablename__ = "puntuaciones"
 
     id = Column(Integer, primary_key=True, index=True)
-    alumno_nombre = Column(String) # Por ahora usaremos nombres simples
-    puntos = Column(Integer)
-    fecha = Column(String) # Para poder hacer rankings semanales o diarios
+    usuario_id = Column(Integer, ForeignKey("usuarios.id", ondelete="CASCADE"), index=True, nullable=True)
+    alumno_nombre = Column(String) # Nombre mostrado en el ranking (se actualiza en cada suma)
+    puntos = Column(Integer)       # Puntuación ACUMULADA del usuario
+    fecha = Column(String)         # Fecha de la última actualización
 
 # 5. NUEVA: Tabla de Respuestas Generales (Para calcular el Progreso del 0 al 100%)
 class RespuestaAlumno(Base):
