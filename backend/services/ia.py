@@ -40,7 +40,14 @@ def _generar_groq(prompt: str, json_mode: bool):
     req = Request(
         "https://api.groq.com/openai/v1/chat/completions",
         data=json.dumps(payload).encode("utf-8"),
-        headers={"Authorization": f"Bearer {api_key}", "Content-Type": "application/json"},
+        headers={
+            "Authorization": f"Bearer {api_key}",
+            "Content-Type": "application/json",
+            # Sin un User-Agent "normal", Cloudflare (que protege api.groq.com)
+            # bloquea el User-Agent por defecto de urllib con un 403 (error 1010).
+            "User-Agent": "Mozilla/5.0 (compatible; AcademiaMEGA/1.0)",
+            "Accept": "application/json",
+        },
         method="POST",
     )
     try:
