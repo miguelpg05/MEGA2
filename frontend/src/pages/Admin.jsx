@@ -433,9 +433,12 @@ function TestsSection() {
   const [temaIds, setTemaIds] = useState([]);
   const [filtroTema, setFiltroTema] = useState('');
   const [aviso, setAviso] = useState('');
+  const [abiertoId, setAbiertoId] = useState(null); // test cuya edición está desplegada
+  const [importInfo, setImportInfo] = useState('');
+  const fileRef = useRef(null);
 
   const cargar = useCallback(() => {
-    Promise.all([apiJson('/api/admin/temas'), apiJson('/api/admin/tests')])
+    return Promise.all([apiJson('/api/admin/temas'), apiJson('/api/admin/tests')])
       .then(([ts, tp]) => { setTemas(ts); setTests(tp); setError(false); setCargando(false); })
       .catch(() => { setError(true); setCargando(false); });
   }, []);
@@ -448,32 +451,52 @@ function TestsSection() {
     if (!nombre.trim()) { setAviso('Escribe un nombre para el test.'); return; }
     if (temaIds.length === 0) { setAviso('Asigna el test al menos a un tema.'); return; }
     try {
-      await apiJson('/api/admin/tests', {
+      const nuevo = await apiJson('/api/admin/tests', {
         method: 'POST',
         body: JSON.stringify({ numero_test: nombre, tema_ids: temaIds, total_preguntas: 10 }),
       });
-      setNombre(''); setTemaIds([]);
-      cargar();
+      setNombre(''); setTemaIds([]); setFiltroTema('');
+      await cargar();
+      // Abrimos directamente su edición para empezar a añadir preguntas
+      setAbiertoId(nuevo.id);
+      setTimeout(() => document.getElementById(`test-${nuevo.id}`)?.scrollIntoView({ behavior: 'smooth', block: 'start' }), 100);
     } catch (err) { setAviso(err.message); }
   };
 
   const borrar = async (id) => {
     if (!window.confirm('¿Eliminar este test? Se borrarán también sus preguntas.')) return;
-    try { await apiJson(`/api/admin/tests/${id}`, { method: 'DELETE' }); cargar(); }
-    catch (err) { setAviso(err.message); }
+    try {
+      await apiJson(`/api/admin/tests/${id}`, { method: 'DELETE' });
+      if (abiertoId === id) setAbiertoId(null);
+      cargar();
+    } catch (err) { setAviso(err.message); }
   };
 
-  // Devuelve true si se guardó (para cerrar el modo edición)
+  // Guarda nombre y temas. Devuelve '' si fue bien o el mensaje de error.
   const editar = async (id, numero_test, tema_ids) => {
-    setAviso('');
     try {
       await apiJson(`/api/admin/tests/${id}`, {
         method: 'PUT',
         body: JSON.stringify({ numero_test, tema_ids, total_preguntas: 10 }),
       });
+      await cargar();
+      return '';
+    } catch (err) { return err.message; }
+  };
+
+  const importar = async (e) => {
+    const archivo = e.target.files?.[0];
+    if (!archivo) return;
+    setImportInfo('Importando…');
+    try {
+      const fd = new FormData();
+      fd.append('archivo', archivo);
+      const res = await apiJson('/api/admin/preguntas/importar', { method: 'POST', body: fd });
+      const detalle = res.errores.length ? ` ${res.errores.length} filas con error: ${res.errores.slice(0, 3).join(' · ')}${res.errores.length > 3 ? '…' : ''}` : '';
+      setImportInfo(`Importadas ${res.creadas} preguntas.${detalle}`);
       cargar();
-      return true;
-    } catch (err) { setAviso(err.message); return false; }
+    } catch (err) { setImportInfo(err.message); }
+    finally { if (fileRef.current) fileRef.current.value = ''; }
   };
 
   if (cargando) return <Cargando texto="Cargando tests..." className="py-12" />;
@@ -483,6 +506,19 @@ function TestsSection() {
 
   return (
     <div className="space-y-6">
+      {/* Importación masiva */}
+      <div className="bg-white border border-gray-100 rounded-2xl p-5 shadow-sm flex flex-col sm:flex-row sm:items-center gap-3">
+        <div className="flex-1 text-sm text-gray-500">
+          <p className="font-semibold text-gray-700">Importar preguntas desde Excel/CSV</p>
+          <p className="text-xs mt-1">Columnas: <code>tema_id, numero_test, enunciado, opcion_a…opcion_d, respuesta_correcta, explicacion</code>. Los tests que no existan se crean solos.</p>
+        </div>
+        <label className="shrink-0 text-sm text-gray-600 cursor-pointer bg-gray-100 hover:bg-gray-200 px-4 py-2 rounded-xl text-center">
+          Importar CSV/XLSX
+          <input ref={fileRef} type="file" accept=".csv,.xlsx" onChange={importar} className="hidden" />
+        </label>
+      </div>
+      {importInfo && <p className="text-sm text-gray-600">{importInfo}</p>}
+
       <form onSubmit={crear} className="bg-white border border-gray-100 rounded-2xl p-5 shadow-sm space-y-4">
         <h4 className="font-semibold text-gray-700">Nuevo test</h4>
         <input value={nombre} onChange={(e) => setNombre(e.target.value)} maxLength={120}
@@ -510,18 +546,23 @@ function TestsSection() {
       <div className="bg-white border border-gray-100 rounded-2xl shadow-sm divide-y divide-gray-100">
         {visibles.length === 0 ? <p className="p-5 text-sm text-gray-400">No hay tests.</p> :
           visibles.map((t) => (
-            <TestFila key={t.id} test={t} temas={temas} onEditar={editar} onBorrar={borrar} />
+            <TestFila key={t.id} test={t} temas={temas}
+              abierto={abiertoId === t.id}
+              onAbrir={() => setAbiertoId(t.id)}
+              onCerrar={() => setAbiertoId(null)}
+              onEditar={editar} onBorrar={borrar} onCambioPreguntas={cargar} />
           ))}
       </div>
     </div>
   );
 }
 
-// Una fila de test: ver o editar (nombre y temas)
-function TestFila({ test, temas, onEditar, onBorrar }) {
-  const [editando, setEditando] = useState(false);
+// Una fila de test. Al pulsar "Editar" se despliega: nombre y temas arriba y,
+// debajo, la gestión de sus preguntas (el antiguo apartado "Preguntas").
+function TestFila({ test, temas, abierto, onAbrir, onCerrar, onEditar, onBorrar, onCambioPreguntas }) {
   const [nombre, setNombre] = useState(test.numero_test);
   const [temaIds, setTemaIds] = useState(test.tema_ids || (test.tema_id ? [test.tema_id] : []));
+  const [estado, setEstado] = useState(''); // mensaje tras guardar los datos del test
   const temasDelTest = test.temas || [];
   // Temas del test que este usuario no gestiona (otros cursos): se conservan al guardar
   const ajenos = temasDelTest.filter((t) => !temas.some((x) => x.id === t.id));
@@ -529,32 +570,18 @@ function TestFila({ test, temas, onEditar, onBorrar }) {
   const empezar = () => {
     setNombre(test.numero_test);
     setTemaIds(test.tema_ids || []);
-    setEditando(true);
+    setEstado('');
+    onAbrir();
   };
 
   const guardar = async () => {
-    if (await onEditar(test.id, nombre, temaIds)) setEditando(false);
+    setEstado('Guardando…');
+    const errorMsg = await onEditar(test.id, nombre, temaIds);
+    setEstado(errorMsg ? `❌ ${errorMsg}` : '✓ Cambios guardados');
   };
 
-  if (editando) {
-    return (
-      <div className="p-4 space-y-3 bg-orange-50/40">
-        <input value={nombre} onChange={(e) => setNombre(e.target.value)} maxLength={120}
-          className="w-full px-3 py-2 rounded-lg bg-white border border-gray-200 outline-none focus:ring-2 focus:ring-orange-500" />
-        <SelectorTemas temas={temas} seleccion={temaIds} onChange={setTemaIds} />
-        {ajenos.length > 0 && (
-          <p className="text-xs text-gray-400">También asignado a temas de otros cursos (se mantienen): {ajenos.map((t) => t.nombre).join(', ')}</p>
-        )}
-        <div className="flex gap-2 justify-end">
-          <button onClick={() => setEditando(false)} className="px-3 py-2 bg-gray-100 text-gray-600 text-sm rounded-lg cursor-pointer">Cancelar</button>
-          <button onClick={guardar} className="px-4 py-2 bg-orange-500 hover:bg-orange-600 text-white text-sm font-medium rounded-lg cursor-pointer">Guardar</button>
-        </div>
-      </div>
-    );
-  }
-
-  return (
-    <div className="p-4 flex justify-between items-start gap-3">
+  const cabecera = (
+    <div className="flex justify-between items-start gap-3">
       <div className="min-w-0">
         <p className="font-medium text-gray-800 break-words">{test.numero_test}</p>
         <div className="flex flex-wrap gap-1.5 mt-1.5">
@@ -565,54 +592,72 @@ function TestFila({ test, temas, onEditar, onBorrar }) {
         <p className="text-xs text-gray-400 mt-1">ID {test.id} · {test.num_preguntas ?? 0} preguntas</p>
       </div>
       <div className="flex gap-2 shrink-0">
-        <button onClick={empezar} className="text-sm text-orange-600 hover:bg-orange-50 px-3 py-1.5 rounded-lg cursor-pointer">Editar</button>
+        {abierto ? (
+          <button onClick={onCerrar} className="text-sm text-gray-600 bg-gray-100 hover:bg-gray-200 px-3 py-1.5 rounded-lg cursor-pointer">Cerrar</button>
+        ) : (
+          <button onClick={empezar} className="text-sm text-orange-600 hover:bg-orange-50 px-3 py-1.5 rounded-lg cursor-pointer">Editar</button>
+        )}
         <button onClick={() => onBorrar(test.id)} className="text-sm text-red-600 hover:bg-red-50 px-3 py-1.5 rounded-lg cursor-pointer">Eliminar</button>
       </div>
+    </div>
+  );
+
+  if (!abierto) {
+    return <div id={`test-${test.id}`} className="p-4 scroll-mt-4">{cabecera}</div>;
+  }
+
+  return (
+    <div id={`test-${test.id}`} className="p-4 space-y-5 bg-orange-50/30 scroll-mt-4">
+      {cabecera}
+
+      {/* 1. Datos del test: nombre, temas y cursos */}
+      <div className="bg-white border border-gray-100 rounded-2xl p-4 space-y-3">
+        <h4 className="font-semibold text-gray-700 text-sm">Datos del test</h4>
+        <input value={nombre} onChange={(e) => setNombre(e.target.value)} maxLength={120}
+          className="w-full px-3 py-2 rounded-lg bg-gray-50 border border-gray-200 outline-none focus:ring-2 focus:ring-orange-500" />
+        <SelectorTemas temas={temas} seleccion={temaIds} onChange={setTemaIds} />
+        {ajenos.length > 0 && (
+          <p className="text-xs text-gray-400">También asignado a temas de otros cursos (se mantienen): {ajenos.map((t) => t.nombre).join(', ')}</p>
+        )}
+        <div className="flex flex-wrap items-center justify-end gap-3">
+          {estado && <span className={`text-sm ${estado.startsWith('❌') ? 'text-red-600' : 'text-gray-500'}`}>{estado}</span>}
+          <button onClick={guardar} className="px-4 py-2 bg-orange-500 hover:bg-orange-600 text-white text-sm font-medium rounded-lg cursor-pointer">Guardar nombre y temas</button>
+        </div>
+      </div>
+
+      {/* 2. Preguntas del test (antiguo apartado "Preguntas") */}
+      <PreguntasDelTest test={test} onCambio={onCambioPreguntas} />
     </div>
   );
 }
 
 // ==========================================
-// Sección: PREGUNTAS
+// Preguntas de un test (dentro de la edición del test)
 // ==========================================
 const PREGUNTA_VACIA = { enunciado: '', opcion_a: '', opcion_b: '', opcion_c: '', opcion_d: '', correctas: ['A'], explicacion: '', tema_id: '' };
 
-function PreguntasSection() {
-  const [tests, setTests] = useState([]);
-  const [testId, setTestId] = useState('');
+function PreguntasDelTest({ test, onCambio }) {
   const [preguntas, setPreguntas] = useState([]);
-  const [cargandoTests, setCargandoTests] = useState(true);
+  const [cargando, setCargando] = useState(true);
   const [error, setError] = useState(false);
   const [form, setForm] = useState(PREGUNTA_VACIA);
   const [editandoId, setEditandoId] = useState(null);
   const [aviso, setAviso] = useState('');
-  const [importInfo, setImportInfo] = useState('');
-  const fileRef = useRef(null);
+  const formRef = useRef(null);
 
-  const cargarTests = useCallback(() => {
-    apiJson('/api/admin/tests')
-      .then((d) => { setTests(d); setError(false); setCargandoTests(false); })
-      .catch(() => { setError(true); setCargandoTests(false); });
-  }, []);
-  useEffect(() => { cargarTests(); }, [cargarTests]);
-
-  const cargarPreguntas = useCallback((id) => {
-    if (!id) { setPreguntas([]); return; }
-    apiJson(`/api/admin/preguntas?test_plantilla_id=${id}`)
-      .then((d) => setPreguntas(d))
-      .catch(() => setPreguntas([]));
-  }, []);
-
-  const seleccionarTest = (id) => { setTestId(id); setEditandoId(null); setForm(PREGUNTA_VACIA); cargarPreguntas(id); };
+  const cargarPreguntas = useCallback(() => {
+    apiJson(`/api/admin/preguntas?test_plantilla_id=${test.id}`)
+      .then((d) => { setPreguntas(d); setError(false); setCargando(false); })
+      .catch(() => { setError(true); setCargando(false); });
+  }, [test.id]);
+  useEffect(() => { cargarPreguntas(); }, [cargarPreguntas]);
 
   const cancelarEdicion = () => { setEditandoId(null); setForm(PREGUNTA_VACIA); setAviso(''); };
 
   const guardar = async (e) => {
     e.preventDefault();
     setAviso('');
-    if (!testId) { setAviso('Selecciona primero un test.'); return; }
     if (form.correctas.length === 0) { setAviso('Marca al menos una opción correcta.'); return; }
-    const test = tests.find((t) => String(t.id) === String(testId));
     const temaPregunta = form.tema_id && (test.tema_ids || []).includes(Number(form.tema_id))
       ? Number(form.tema_id)
       : test.tema_id;
@@ -622,7 +667,7 @@ function PreguntasSection() {
       explicacion: form.explicacion,
       respuesta_correcta: [...form.correctas].sort().join(''),
       tema_id: temaPregunta,
-      test_plantilla_id: Number(testId),
+      test_plantilla_id: test.id,
     };
     try {
       if (editandoId) {
@@ -631,7 +676,8 @@ function PreguntasSection() {
         await apiJson('/api/admin/preguntas', { method: 'POST', body: JSON.stringify(cuerpo) });
       }
       cancelarEdicion();
-      cargarPreguntas(testId);
+      cargarPreguntas();
+      onCambio?.();
     } catch (err) { setAviso(err.message); }
   };
 
@@ -645,118 +691,93 @@ function PreguntasSection() {
       tema_id: p.tema_id || '',
     });
     setAviso('');
+    formRef.current?.scrollIntoView({ behavior: 'smooth', block: 'center' });
   };
 
   const borrar = async (id) => {
     if (!window.confirm('¿Eliminar esta pregunta?')) return;
-    try { await apiJson(`/api/admin/preguntas/${id}`, { method: 'DELETE' }); if (editandoId === id) cancelarEdicion(); cargarPreguntas(testId); }
-    catch (err) { setAviso(err.message); }
-  };
-
-  const importar = async (e) => {
-    const archivo = e.target.files?.[0];
-    if (!archivo) return;
-    setImportInfo('Importando…');
     try {
-      const fd = new FormData();
-      fd.append('archivo', archivo);
-      const res = await apiJson('/api/admin/preguntas/importar', { method: 'POST', body: fd });
-      setImportInfo(`Importadas ${res.creadas} preguntas.${res.errores.length ? ` ${res.errores.length} filas con error.` : ''}`);
-      cargarTests();
-      if (testId) cargarPreguntas(testId);
-    } catch (err) { setImportInfo(err.message); }
-    finally { if (fileRef.current) fileRef.current.value = ''; }
+      await apiJson(`/api/admin/preguntas/${id}`, { method: 'DELETE' });
+      if (editandoId === id) cancelarEdicion();
+      cargarPreguntas();
+      onCambio?.();
+    } catch (err) { setAviso(err.message); }
   };
-
-  if (cargandoTests) return <Cargando texto="Cargando..." className="py-12" />;
-  if (error) return <MensajeError texto="No se pudieron cargar los tests." onReintentar={() => { setCargandoTests(true); cargarTests(); }} />;
 
   const set = (campo) => (e) => setForm({ ...form, [campo]: e.target.value });
-  const testSeleccionado = tests.find((t) => String(t.id) === String(testId));
   const toggleCorrecta = (letra) => setForm((f) => ({
     ...f,
     correctas: f.correctas.includes(letra) ? f.correctas.filter((l) => l !== letra) : [...f.correctas, letra],
   }));
+  const nombreTema = (id) => (test.temas || []).find((t) => t.id === id)?.nombre;
 
   return (
-    <div className="space-y-6">
-      <div className="bg-white border border-gray-100 rounded-2xl p-5 shadow-sm flex flex-col sm:flex-row sm:items-center gap-3">
-        <select value={testId} onChange={(e) => seleccionarTest(e.target.value)}
-          className="flex-1 px-4 py-2 rounded-xl bg-gray-50 border border-gray-200 outline-none focus:ring-2 focus:ring-orange-500">
-          <option value="">Selecciona un test…</option>
-          {tests.map((t) => <option key={t.id} value={t.id}>{t.numero_test}{t.temas?.length > 1 ? ` · ${t.temas.length} temas` : ''}</option>)}
-        </select>
-        <label className="text-sm text-gray-600 cursor-pointer bg-gray-100 hover:bg-gray-200 px-4 py-2 rounded-xl">
-          Importar CSV/XLSX
-          <input ref={fileRef} type="file" accept=".csv,.xlsx" onChange={importar} className="hidden" />
-        </label>
-      </div>
-      {importInfo && <p className="text-sm text-gray-600">{importInfo}</p>}
+    <div className="space-y-4">
+      <h4 className="font-semibold text-gray-700 text-sm px-1">Preguntas del test ({preguntas.length})</h4>
 
-      {testId && (
-        <form onSubmit={guardar} className="bg-white border border-gray-100 rounded-2xl p-5 shadow-sm space-y-3">
-          <div className="flex items-center justify-between">
-            <h4 className="font-semibold text-gray-700">{editandoId ? 'Editar pregunta' : 'Nueva pregunta'}</h4>
-            {editandoId && <button type="button" onClick={cancelarEdicion} className="text-sm text-gray-500 hover:underline cursor-pointer">Cancelar edición</button>}
-          </div>
-
-          {testSeleccionado?.temas?.length > 1 && (
-            <label className="flex flex-col sm:flex-row sm:items-center gap-2 text-sm text-gray-500">
-              Tema de la pregunta:
-              <select value={form.tema_id || testSeleccionado.tema_id} onChange={set('tema_id')}
-                className="flex-1 px-3 py-2 rounded-xl bg-gray-50 border border-gray-200 outline-none focus:ring-2 focus:ring-orange-500">
-                {testSeleccionado.temas.map((t) => <option key={t.id} value={t.id}>{t.nombre}</option>)}
-              </select>
-            </label>
-          )}
-
-          <textarea value={form.enunciado} onChange={set('enunciado')} required placeholder="Enunciado"
-            className="w-full px-4 py-2 rounded-xl bg-gray-50 border border-gray-200 outline-none focus:ring-2 focus:ring-orange-500" rows={2} />
-
-          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-            {['a', 'b', 'c', 'd'].map((l) => (
-              <div key={l} className="flex items-center gap-2">
-                <label className={`shrink-0 w-16 flex items-center gap-1.5 px-2 py-2 rounded-lg border cursor-pointer text-sm font-medium ${form.correctas.includes(l.toUpperCase()) ? 'bg-green-50 border-green-400 text-green-700' : 'bg-gray-50 border-gray-200 text-gray-500'}`}>
-                  <input type="checkbox" checked={form.correctas.includes(l.toUpperCase())} onChange={() => toggleCorrecta(l.toUpperCase())} />
-                  {l.toUpperCase()}
-                </label>
-                <input value={form[`opcion_${l}`]} onChange={set(`opcion_${l}`)} required placeholder={`Opción ${l.toUpperCase()}`}
-                  className="flex-1 px-4 py-2 rounded-xl bg-gray-50 border border-gray-200 outline-none focus:ring-2 focus:ring-orange-500" />
-              </div>
-            ))}
-          </div>
-          <p className="text-xs text-gray-400">Marca la casilla de cada opción correcta. Puede haber <strong>más de una</strong>.</p>
-
-          <div className="flex flex-col sm:flex-row gap-3">
-            <input value={form.explicacion} onChange={set('explicacion')} placeholder="Explicación (opcional)"
-              className="flex-1 px-4 py-2 rounded-xl bg-gray-50 border border-gray-200 outline-none focus:ring-2 focus:ring-orange-500" />
-            <button className="px-5 py-2 bg-orange-500 hover:bg-orange-600 text-white font-medium rounded-xl cursor-pointer">
-              {editandoId ? 'Guardar cambios' : 'Añadir pregunta'}
-            </button>
-          </div>
-          {aviso && <p className="text-sm text-red-600">{aviso}</p>}
-        </form>
-      )}
-
-      {testId && (
-        <div className="bg-white border border-gray-100 rounded-2xl shadow-sm divide-y divide-gray-100">
-          {preguntas.length === 0 ? <p className="p-5 text-sm text-gray-400">Este test no tiene preguntas.</p> :
-            preguntas.map((p) => (
-              <div key={p.id} className={`p-4 flex justify-between items-start gap-3 ${editandoId === p.id ? 'bg-orange-50' : ''}`}>
-                <div className="min-w-0">
-                  <p className="text-gray-800">{p.enunciado}</p>
-                  <p className="text-xs text-gray-400 mt-1">
-                    Correcta{(p.respuestas_correctas?.length || 0) > 1 ? 's' : ''}: {(p.respuestas_correctas || []).join(', ') || p.respuesta_correcta} · ID {p.id}
-                  </p>
-                </div>
-                <div className="flex gap-2 shrink-0">
-                  <button onClick={() => empezarEdicion(p)} className="text-sm text-orange-600 hover:bg-orange-50 px-3 py-1.5 rounded-lg cursor-pointer">Editar</button>
-                  <button onClick={() => borrar(p.id)} className="text-sm text-red-600 hover:bg-red-50 px-3 py-1.5 rounded-lg cursor-pointer">Eliminar</button>
-                </div>
-              </div>
-            ))}
+      <form ref={formRef} onSubmit={guardar} className="bg-white border border-gray-100 rounded-2xl p-4 sm:p-5 space-y-3">
+        <div className="flex items-center justify-between">
+          <h4 className="font-semibold text-gray-700">{editandoId ? 'Editar pregunta' : 'Nueva pregunta'}</h4>
+          {editandoId && <button type="button" onClick={cancelarEdicion} className="text-sm text-gray-500 hover:underline cursor-pointer">Cancelar edición</button>}
         </div>
-      )}
+
+        {test.temas?.length > 1 && (
+          <label className="flex flex-col sm:flex-row sm:items-center gap-2 text-sm text-gray-500">
+            Tema de la pregunta:
+            <select value={form.tema_id || test.tema_id} onChange={set('tema_id')}
+              className="flex-1 px-3 py-2 rounded-xl bg-gray-50 border border-gray-200 outline-none focus:ring-2 focus:ring-orange-500">
+              {test.temas.map((t) => <option key={t.id} value={t.id}>{t.nombre}</option>)}
+            </select>
+          </label>
+        )}
+
+        <textarea value={form.enunciado} onChange={set('enunciado')} required placeholder="Enunciado"
+          className="w-full px-4 py-2 rounded-xl bg-gray-50 border border-gray-200 outline-none focus:ring-2 focus:ring-orange-500" rows={2} />
+
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+          {['a', 'b', 'c', 'd'].map((l) => (
+            <div key={l} className="flex items-center gap-2">
+              <label className={`shrink-0 w-16 flex items-center gap-1.5 px-2 py-2 rounded-lg border cursor-pointer text-sm font-medium ${form.correctas.includes(l.toUpperCase()) ? 'bg-green-50 border-green-400 text-green-700' : 'bg-gray-50 border-gray-200 text-gray-500'}`}>
+                <input type="checkbox" checked={form.correctas.includes(l.toUpperCase())} onChange={() => toggleCorrecta(l.toUpperCase())} />
+                {l.toUpperCase()}
+              </label>
+              <input value={form[`opcion_${l}`]} onChange={set(`opcion_${l}`)} required placeholder={`Opción ${l.toUpperCase()}`}
+                className="flex-1 min-w-0 px-4 py-2 rounded-xl bg-gray-50 border border-gray-200 outline-none focus:ring-2 focus:ring-orange-500" />
+            </div>
+          ))}
+        </div>
+        <p className="text-xs text-gray-400">Marca la casilla de cada opción correcta. Puede haber <strong>más de una</strong>.</p>
+
+        <div className="flex flex-col sm:flex-row gap-3">
+          <input value={form.explicacion} onChange={set('explicacion')} placeholder="Explicación (opcional)"
+            className="flex-1 px-4 py-2 rounded-xl bg-gray-50 border border-gray-200 outline-none focus:ring-2 focus:ring-orange-500" />
+          <button className="px-5 py-2 bg-orange-500 hover:bg-orange-600 text-white font-medium rounded-xl cursor-pointer">
+            {editandoId ? 'Guardar cambios' : 'Añadir pregunta'}
+          </button>
+        </div>
+        {aviso && <p className="text-sm text-red-600">{aviso}</p>}
+      </form>
+
+      <div className="bg-white border border-gray-100 rounded-2xl divide-y divide-gray-100">
+        {cargando ? <Cargando texto="Cargando preguntas..." className="py-6" /> :
+          error ? <MensajeError texto="No se pudieron cargar las preguntas." onReintentar={() => { setCargando(true); cargarPreguntas(); }} /> :
+          preguntas.length === 0 ? <p className="p-5 text-sm text-gray-400">Este test todavía no tiene preguntas.</p> :
+          preguntas.map((p, i) => (
+            <div key={p.id} className={`p-4 flex justify-between items-start gap-3 ${editandoId === p.id ? 'bg-orange-50' : ''}`}>
+              <div className="min-w-0">
+                <p className="text-gray-800"><span className="text-gray-400 mr-1">{i + 1}.</span>{p.enunciado}</p>
+                <p className="text-xs text-gray-400 mt-1">
+                  Correcta{(p.respuestas_correctas?.length || 0) > 1 ? 's' : ''}: {(p.respuestas_correctas || []).join(', ') || p.respuesta_correcta}
+                  {test.temas?.length > 1 && nombreTema(p.tema_id) ? ` · ${nombreTema(p.tema_id)}` : ''} · ID {p.id}
+                </p>
+              </div>
+              <div className="flex gap-2 shrink-0">
+                <button onClick={() => empezarEdicion(p)} className="text-sm text-orange-600 hover:bg-orange-50 px-3 py-1.5 rounded-lg cursor-pointer">Editar</button>
+                <button onClick={() => borrar(p.id)} className="text-sm text-red-600 hover:bg-red-50 px-3 py-1.5 rounded-lg cursor-pointer">Eliminar</button>
+              </div>
+            </div>
+          ))}
+      </div>
     </div>
   );
 }
@@ -877,8 +898,8 @@ export default function Admin() {
   const esSuperadmin = usuario?.rol === 'superadmin';
 
   const tabs = esSuperadmin
-    ? ['Métricas', 'Cursos', 'Temas', 'Tests', 'Preguntas', 'Usuarios', 'Ranking']
-    : ['Métricas', 'Temas', 'Tests', 'Preguntas', 'Ranking'];
+    ? ['Métricas', 'Cursos', 'Temas', 'Tests', 'Usuarios', 'Ranking']
+    : ['Métricas', 'Temas', 'Tests', 'Ranking'];
   const [tab, setTab] = useState('Métricas');
 
   const misCursos = usuario?.cursos || [];
@@ -918,7 +939,6 @@ export default function Admin() {
         {tab === 'Cursos' && esSuperadmin && <CursosSection />}
         {tab === 'Temas' && <TemasSection />}
         {tab === 'Tests' && <TestsSection />}
-        {tab === 'Preguntas' && <PreguntasSection />}
         {tab === 'Usuarios' && esSuperadmin && <UsuariosSection />}
         {tab === 'Ranking' && <RankingSection esSuperadmin={esSuperadmin} />}
       </div>
