@@ -179,3 +179,30 @@ def test_test_antiguo_sin_filas_intermedias_sigue_visible(entorno):
     assert [t["numero_test"] for t in listado] == ["007"]
     admin = como("profe").get("/api/admin/tests").json()
     assert admin[0]["tema_ids"] == [ids["t1"]]
+
+
+def test_borrar_contenido_ya_respondido_por_alumnos(entorno):
+    """Borrar preguntas, tests o temas que los alumnos ya han respondido no debe
+    fallar por las claves foráneas de respuestas_alumnos / registro_fallos."""
+    from models import RespuestaAlumno, RegistroFallo
+    como, ids, Sesion = entorno
+    test = como("jefe").post("/api/admin/tests", json={"numero_test": "Con respuestas", "tema_ids": [ids["t1"]]}).json()
+    base = dict(opcion_a="a", opcion_b="b", opcion_c="c", opcion_d="d", respuesta_correcta="A",
+                tema_id=ids["t1"], test_plantilla_id=test["id"])
+    p1 = como("jefe").post("/api/admin/preguntas", json={**base, "enunciado": "P1"}).json()["id"]
+    p2 = como("jefe").post("/api/admin/preguntas", json={**base, "enunciado": "P2"}).json()["id"]
+
+    # Un alumno responde y falla ambas
+    for pid in (p1, p2):
+        como("alumno").post("/api/test/fallo", json={"pregunta_id": pid})
+    como("alumno").post("/api/progreso/guardar-resultados",
+                        json={"respuestas": [{"pregunta_id": p1, "es_correcta": False}, {"pregunta_id": p2, "es_correcta": True}]})
+
+    assert como("jefe").delete(f"/api/admin/preguntas/{p1}").status_code == 200
+    assert como("jefe").delete(f"/api/admin/tests/{test['id']}").status_code == 200
+    assert como("jefe").delete(f"/api/admin/temas/{ids['t2']}").status_code == 200  # tema con preguntas
+
+    db = Sesion()
+    assert db.query(RespuestaAlumno).filter(RespuestaAlumno.pregunta_id.in_([p1, p2])).count() == 0
+    assert db.query(RegistroFallo).filter(RegistroFallo.pregunta_id.in_([p1, p2])).count() == 0
+    db.close()

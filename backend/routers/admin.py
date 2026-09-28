@@ -51,6 +51,16 @@ NOMBRES_DEMO = ["Marta V.", "Carlos M.", "Lucía Gómez", "Javier R.", "Ana Ruiz
 # ==========================================
 # HELPERS DE ALCANCE
 # ==========================================
+def _borrar_rastro_de_preguntas(db: Session, pregunta_ids) -> None:
+    """Borra las respuestas y fallos de alumnos ligados a esas preguntas.
+    Sin esto la BD impide borrar una pregunta que ya se ha respondido
+    (claves foráneas de respuestas_alumnos y registro_fallos)."""
+    ids = list(pregunta_ids)
+    if not ids:
+        return
+    db.query(RespuestaAlumno).filter(RespuestaAlumno.pregunta_id.in_(ids)).delete(synchronize_session=False)
+    db.query(RegistroFallo).filter(RegistroFallo.pregunta_id.in_(ids)).delete(synchronize_session=False)
+
 def _tema_o_404(db: Session, tema_id: int) -> Tema:
     tema = db.query(Tema).filter(Tema.id == tema_id).first()
     if not tema:
@@ -192,6 +202,11 @@ def borrar_tema(tema_id: int, usuario: Usuario = Depends(require_gestor), db: Se
         otros = [t.id for t in test.temas if t.id != tema.id]
         if otros:
             test.tema_id = otros[0]
+    # Sus preguntas (y lo que los alumnos respondieron en ellas) se borran con él
+    ids_preguntas = [p[0] for p in db.query(Pregunta.id).filter(Pregunta.tema_id == tema.id).all()]
+    _borrar_rastro_de_preguntas(db, ids_preguntas)
+    if ids_preguntas:
+        db.query(Pregunta).filter(Pregunta.id.in_(ids_preguntas)).delete(synchronize_session=False)
     db.delete(tema)
     db.commit()
     return {"mensaje": "Tema eliminado"}
@@ -406,6 +421,10 @@ def borrar_test(test_id: int, usuario: Usuario = Depends(require_gestor), db: Se
                 status_code=403,
                 detail="Este test está asignado también a temas de otros cursos. Quita tus temas del test en lugar de borrarlo.",
             )
+    ids_preguntas = [p[0] for p in db.query(Pregunta.id).filter(Pregunta.test_plantilla_id == test.id).all()]
+    _borrar_rastro_de_preguntas(db, ids_preguntas)
+    if ids_preguntas:
+        db.query(Pregunta).filter(Pregunta.id.in_(ids_preguntas)).delete(synchronize_session=False)
     db.delete(test)
     db.commit()
     return {"mensaje": "Test eliminado"}
@@ -511,6 +530,7 @@ def borrar_pregunta(pregunta_id: int, usuario: Usuario = Depends(require_gestor)
     if not pregunta:
         raise HTTPException(status_code=404, detail="Pregunta no encontrada")
     verificar_acceso_curso(usuario, _curso_id_de_tema(db, pregunta.tema_id))
+    _borrar_rastro_de_preguntas(db, [pregunta.id])
     db.delete(pregunta)
     db.commit()
     return {"mensaje": "Pregunta eliminada"}

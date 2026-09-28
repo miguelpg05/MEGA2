@@ -157,6 +157,7 @@ Todo el temario cuelga de un **`Curso`**. La tabla intermedia `usuario_cursos` (
 - **`alembic stamp head` NO aplica las migraciones**, solo las marca como aplicadas. Sobre una BD ya existente hay que hacer `alembic stamp 0001` y luego `alembic upgrade head`. Si te saltas esto, faltan columnas (nos pasó con `usuarios.rol`) y **toda consulta a esa tabla peta**. Verifica con:
   `SELECT column_name FROM information_schema.columns WHERE table_name='usuarios';`
 - **Un "Failed to fetch" en el navegador casi nunca es CORS ni red**: puede ser un 500 del backend. Ya está mitigado (los 500 llevan cabeceras CORS), pero para diagnosticar: prueba un endpoint **sin BD** (`/api/test-cors`), otro **con BD** (`/api/ranking/clase`) y otro de la tabla sospechosa. El que falle te señala la causa.
+- **Borrar preguntas/tests/temas ya respondidos**: `respuestas_alumnos` y `registro_fallos` apuntan a `preguntas` sin `ON DELETE CASCADE`. Por eso `admin.py` borra antes ese rastro (`_borrar_rastro_de_preguntas`). Cualquier endpoint nuevo que borre preguntas debe hacer lo mismo o la BD devolverá un 500.
 - **Ojo con los servicios duplicados**: existieron a la vez un Render/Vercel antiguos (`backend-academia-kxx5`, `web-mega-flax`) y los buenos (`mega2-mi1o`, `mega-2-rho`). Confirma siempre a qué URL apunta el bundle desplegado.
 
 **⏳ Pendientes (prioridad para siguientes fases):**
