@@ -12,6 +12,17 @@ SQLALCHEMY_DATABASE_URL = os.getenv("DATABASE_URL")
 if not SQLALCHEMY_DATABASE_URL:
     raise RuntimeError("Falta la variable de entorno DATABASE_URL con la cadena de conexión a la base de datos.")
 
+def normalizar_url_bd(url: str) -> str:
+    """Fija el driver psycopg2 (el que instala requirements.txt). SQLAlchemy 2.1
+    cambió el driver por defecto de "postgresql://" a psycopg 3, que no está
+    instalado: sin esto el backend no arrancaría tras un despliegue limpio."""
+    for prefijo in ("postgresql://", "postgres://"):
+        if url.startswith(prefijo):
+            return "postgresql+psycopg2://" + url[len(prefijo):]
+    return url
+
+SQLALCHEMY_DATABASE_URL = normalizar_url_bd(SQLALCHEMY_DATABASE_URL)
+
 # Para PostgreSQL eliminamos el 'check_same_thread' que solo era para SQLite
 engine = create_engine(SQLALCHEMY_DATABASE_URL)
 SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
@@ -147,14 +158,37 @@ class Usuario(Base):
 
 # --- TABLAS PARA EL LISTADO DE TESTS ESPECÍFICOS ---
 
+# Tabla intermedia test <-> tema (muchos a muchos): un mismo test puede
+# asignarse a VARIOS temas (aparece en el banco de tests de cada uno).
+test_plantilla_temas = Table(
+    "test_plantilla_temas",
+    Base.metadata,
+    Column("test_plantilla_id", Integer, ForeignKey("test_plantillas.id", ondelete="CASCADE"), primary_key=True),
+    Column("tema_id", Integer, ForeignKey("temas.id", ondelete="CASCADE"), primary_key=True),
+)
+
 # 1. Definimos las plantillas de los tests que existen
 class TestPlantilla(Base):
     __tablename__ = "test_plantillas"
 
     id = Column(Integer, primary_key=True, index=True)
-    numero_test = Column(String, unique=True, index=True) # Ej: "001", "002"
-    tema_id = Column(Integer) # A qué tema pertenece
+    # Nombre del test. Admite CUALQUIER texto ("001", "Simulacro 3", "Repaso bloque I"...).
+    # La columna conserva su nombre histórico para no romper datos ni migraciones.
+    numero_test = Column(String, unique=True, index=True)
+    # Tema PRINCIPAL (el primero asignado). Se mantiene por compatibilidad y es el
+    # tema por defecto de las preguntas nuevas del test.
+    tema_id = Column(Integer)
     total_preguntas = Column(Integer, default=10) # Cuántas preguntas tiene este test
+
+    # TODOS los temas a los que está asignado (incluye el principal)
+    temas = relationship("Tema", secondary=test_plantilla_temas, backref="tests_asignados")
+
+    @property
+    def tema_ids(self):
+        """IDs de todos sus temas: primero el principal y luego el resto por id.
+        Tolera tests antiguos sin filas en la tabla intermedia."""
+        resto = sorted(t.id for t in self.temas if t.id != self.tema_id)
+        return ([self.tema_id] if self.tema_id is not None else []) + resto
 
 # 2. Guardamos cada intento real que hace un alumno
 class TestIntento(Base):
@@ -165,6 +199,12 @@ class TestIntento(Base):
     test_plantilla_id = Column(Integer, index=True) # Qué test hizo
     fecha_intento = Column(DateTime, default=datetime.utcnow) # Cuándo lo hizo
     fallos_ultimo = Column(Integer) # Cuántos fallos tuvo en ESTE intento
+    # Nº de preguntas de ESTE intento (en tests personalizados no hay plantilla).
+    total_preguntas = Column(Integer, nullable=True)
+    # "practica" | "examen" (None en intentos antiguos)
+    modo = Column(String, nullable=True)
+    # True si el test lo configuró el propio alumno ("Personaliza tu test")
+    personalizado = Column(Boolean, nullable=True, default=False)
 
 # 3. Registro de llamadas a la IA (Gemini) para dar visibilidad de uso y coste
 class IALlamada(Base):
@@ -172,7 +212,7 @@ class IALlamada(Base):
 
     id = Column(Integer, primary_key=True, index=True)
     usuario_id = Column(Integer, index=True)
-    tipo = Column(String) # "resumen" | "esquema"
+    tipo = Column(String) # "resumen" (histórico: "esquema")
     tokens_totales = Column(Integer, nullable=True) # Si la respuesta de Gemini reporta uso de tokens
     fecha = Column(DateTime, default=datetime.utcnow, index=True)
 

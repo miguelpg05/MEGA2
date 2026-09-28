@@ -16,10 +16,9 @@ from schemas import (
     ResumenRequest,
     PuntosRequest,
     RepasoCompletado,
-    EsquemaRequest,
 )
 from services.preguntas import texto_opcion_correcta, textos_correctos
-from services.esquema import construir_mindmap, extraer_json, extraer_texto_pdf
+from services.pdf import extraer_texto_pdf
 from services.ia import generar_texto, IAError
 
 # Monitorización de errores con Sentry (opcional: solo si se define SENTRY_DSN)
@@ -252,7 +251,7 @@ def _tema_accesible_para(usuario: Usuario, tema: Tema) -> bool:
 def _contenido_fuente(datos, usuario: Usuario, db: Session):
     """Devuelve (texto_fuente, descripcion_fuente) según lo que el usuario haya
     elegido: texto libre, un PDF del tema, o solo el nombre del tema.
-    Compartido por el esquema y el resumen (ambos aceptan texto/material_id)."""
+    Lo usa el resumen de IA (acepta texto/material_id/tema_ids)."""
     if datos.texto and datos.texto.strip():
         return datos.texto.strip()[:18000], "el texto proporcionado"
 
@@ -292,44 +291,3 @@ def _contenido_fuente(datos, usuario: Usuario, db: Session):
             return contenido, "los materiales de los temas seleccionados"
 
     return "", "el tema (solo el título)"
-
-
-@app.post("/api/ia/esquema")
-def generar_esquema_ia(datos: EsquemaRequest, usuario: Usuario = Depends(get_current_user), db: Session = Depends(get_db)):
-    contenido, fuente = _contenido_fuente(datos, usuario, db)
-
-    base = (
-        f'Basándote en {fuente}, sobre el tema "{datos.tema_nombre}",'
-        if contenido == "" else
-        f'A partir del siguiente CONTENIDO (de {fuente}) sobre el tema "{datos.tema_nombre}",'
-    )
-    prompt = f"""Eres un experto en síntesis pedagógica para oposiciones.
-{base} crea un mapa mental jerárquico para memorizar lo esencial.
-
-Devuelve EXCLUSIVAMENTE un JSON válido (sin explicaciones, sin markdown, sin ```),
-con esta forma exacta:
-{{"titulo": "Título corto del tema",
-  "ramas": [
-    {{"titulo": "Bloque principal", "hijos": ["Detalle", "Detalle"]}}
-  ]}}
-
-Reglas: máximo 6 ramas; máximo 8 hijos por rama; cada texto de 5 palabras como
-máximo; en español; sin comillas ni paréntesis dentro de los textos.
-{("CONTENIDO:\\n" + contenido) if contenido else ""}
-"""
-    # 1) Llamada a la IA (JSON)
-    try:
-        texto_ia, tokens = generar_texto(prompt, json_mode=True)
-    except IAError as e:
-        raise HTTPException(status_code=e.status, detail=e.mensaje)
-
-    _registrar_uso_ia(db, usuario.id, "esquema", tokens)
-
-    # 2) Procesado de la respuesta a un mindmap SIEMPRE válido
-    try:
-        data = extraer_json(texto_ia)
-        codigo = construir_mindmap(data)
-        return {"esquema_codigo": codigo, "fuente": fuente}
-    except Exception as e:
-        print(f"❌ Esquema: respuesta no parseable: {e!r} | texto={texto_ia[:300]!r}")
-        raise HTTPException(status_code=502, detail="La IA devolvió un formato inesperado. Inténtalo de nuevo.")

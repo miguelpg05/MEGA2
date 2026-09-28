@@ -92,10 +92,14 @@ def sembrar_datos_demo():
         # --- Plantillas de test 001-100 (solo si no hay ninguna) ---
         if not db.query(TestPlantilla).first():
             print("💉 Inyectando plantillas de test (001-100)...")
-            plantillas = [
-                TestPlantilla(numero_test=str(i).zfill(3), tema_id=1 if i <= 50 else 2, total_preguntas=10)
-                for i in range(1, 101)
-            ]
+            temas_por_id = {t.id: t for t in db.query(Tema).all()}
+            plantillas = []
+            for i in range(1, 101):
+                tema_id = 1 if i <= 50 else 2
+                p = TestPlantilla(numero_test=str(i).zfill(3), tema_id=tema_id, total_preguntas=10)
+                if tema_id in temas_por_id:
+                    p.temas = [temas_por_id[tema_id]]
+                plantillas.append(p)
             db.add_all(plantillas)
             db.commit()
             print("✅ 100 tests listos en la base de datos.")

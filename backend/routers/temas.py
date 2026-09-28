@@ -8,10 +8,10 @@ Además siempre se incluyen los temas SIN curso asignado (`curso_id IS NULL`),
 para no ocultar el temario antiguo mientras se reorganiza en cursos.
 """
 from fastapi import APIRouter, Depends, HTTPException, Response
-from sqlalchemy import or_
+from sqlalchemy import or_, func
 from sqlalchemy.orm import Session
 
-from models import get_db, Tema, MaterialTema, Usuario
+from models import get_db, Tema, MaterialTema, Usuario, Pregunta
 from routers.auth import get_current_user, es_superadmin
 
 router = APIRouter(prefix="/api/temas", tags=["Temas"])
@@ -44,6 +44,14 @@ def listar_temas_del_usuario(
             # Sin cursos asignados solo ve el temario aún no clasificado
             query = query.filter(Tema.curso_id.is_(None))
 
+    temas = query.order_by(Tema.id).all()
+    # Nº de preguntas por tema (lo usa "Personaliza tu test" para orientar al alumno)
+    conteo = dict(
+        db.query(Pregunta.tema_id, func.count(Pregunta.id))
+        .filter(Pregunta.tema_id.in_([t.id for t in temas] or [-1]))
+        .group_by(Pregunta.tema_id)
+        .all()
+    )
     return [
         {
             "id": t.id,
@@ -51,8 +59,9 @@ def listar_temas_del_usuario(
             "bloque": t.bloque,
             "curso_id": t.curso_id,
             "curso": t.curso.nombre if t.curso else None,
+            "num_preguntas": conteo.get(t.id, 0),
         }
-        for t in query.order_by(Tema.id).all()
+        for t in temas
     ]
 
 

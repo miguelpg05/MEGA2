@@ -6,12 +6,12 @@ Guía de trabajo para Claude Code sobre esta plataforma SaaS educativa (preparac
 
 ## 1. Qué es este proyecto
 
-SaaS didáctico para una academia. Los alumnos hacen tests por temas, reciben repaso automático de sus fallos (flashcards), esquemas visuales generados por IA, y compiten en un ranking. Uso previsto: **~200 alumnos concurrentes** de una única academia.
+SaaS didáctico para una academia. Los alumnos hacen tests por temas (Modo Práctica o Modo Examen) o personalizados, reciben repaso automático de sus fallos (flashcards), resúmenes generados por IA, y compiten en un ranking. Un alumno puede estar matriculado en varios cursos. Uso previsto: **~200 alumnos concurrentes** de una única academia.
 
 - **Frontend**: React 19 + Vite 7 + Tailwind 4 + React Router 7 → desplegado en **Vercel**.
 - **Backend**: FastAPI + SQLAlchemy → desplegado en **Render**.
 - **Base de datos**: PostgreSQL en **Neon**.
-- **IA**: capa intercambiable (`services/ia.py`, `generar_texto()`), seleccionable con `IA_PROVIDER`: **Groq** (Llama 3.3, por defecto) o **Gemini**. Genera resúmenes y esquemas (mapa mental Mermaid construido desde un JSON).
+- **IA**: capa intercambiable (`services/ia.py`, `generar_texto()`), seleccionable con `IA_PROVIDER`: **Groq** (Llama 3.3, por defecto) o **Gemini**. Genera resúmenes de estudio (la función de esquemas/mapas mentales se eliminó en sept. 2026).
 - **Auth**: dos vías, ambas restringidas a `@academiamega.net`: **email+contraseña** (registro/login) y **Google** (OAuth2 con selector de cuenta forzado `prompt=select_account`; el backend valida el `access_token` contra `tokeninfo` comprobando `aud`/`azp` = nuestro client_id). La sesión se gestiona con un JWT propio + `sesion_id` (sesión única por usuario). En el front, la sesión se valida contra `/api/auth/me` vía `AuthContext`. El rol se promociona según `ADMIN_EMAILS`/`PROFESOR_EMAILS`.
 - **Repo**: `https://github.com/miguelpg05/WebMEGA.git` (rama principal `main`).
 
@@ -27,19 +27,21 @@ backend/
   routers/
     auth.py               # Login Google, /me, logout, sesión única, roles (require_staff/require_admin)
     progreso.py           # Progreso por tema y guardado de resultados
-    progreso_test.py      # Generación de tests desde plantillas + histórico de intentos
+    progreso_test.py      # Tests desde plantillas, test personalizado (/api/test/personalizado) + histórico de intentos
+    temas.py              # Temas visibles del usuario (con nº de preguntas) y sus materiales
     admin.py              # Panel admin: CRUD temas/tests/preguntas, importación, métricas, roles, ranking
   seed.py                 # Datos demo (idempotente); se ejecuta a mano, no en el arranque
-  alembic/                # Migraciones (0001 esquema inicial, 0002 rol + ia_llamadas)
+  alembic/                # Migraciones 0001–0006 (0006: tests multi-tema + modo en intentos)
   inyectar_preguntas.py   # Script para cargar preguntas desde preguntas.xlsx
-  services/               # (auxiliares)
+  services/               # preguntas.py, tests_util.py (nombres/orden de tests), pdf.py, ia.py
   requirements.txt
 frontend/
   src/
     config.js             # API_BASE_URL y GOOGLE_CLIENT_ID (leen de import.meta.env)
     api.js                # apiFetch: añade Bearer y gestiona 401 (sesión en otro dispositivo)
-    pages/                # Auth, Dashboard, Test, TestListado, Repaso, Esquema, Admin, PanelAlumno
-    components/           # IndicadorProgreso, RankingClase, ResumenIA, MermaidDiagram, Estado
+    pages/                # Auth, Dashboard, Test, TestListado, PersonalizarTest, Repaso, MaterialTema, Admin, PanelAlumno
+    components/           # IndicadorProgreso, RankingClase, ResumenIA, SelectorCurso, GraficoEvolucion, Estado
+    utils/cursos.js       # Agrupar temas por curso y recordar el curso activo
     auth/AuthContext.jsx  # Valida la sesión con /me y expone el usuario+rol
   index.html              # Incluye el script de Google Identity Services
 ```
@@ -99,7 +101,7 @@ Existen `.env.example` en ambas carpetas: manténlos actualizados cuando añadas
 
 | Objetivo | Estado | Notas |
 |---|---|---|
-| **Responsive** | 🟡 Parcial | `viewport` OK y hay breakpoints `md:`/`lg:` en Dashboard. Falta auditar Test, Esquema (Mermaid), TestListado y el botón de Google (ancho fijo `336`). |
+| **Responsive** | 🟡 Parcial | `viewport` OK y hay breakpoints `md:`/`lg:` en Dashboard. Falta auditar TestListado y el botón de Google (ancho fijo `336`). |
 | **Sesión única por usuario** | 🟢 Implementado | Columna `usuarios.sesion_id` + claim `sid` en el JWT; cada login regenera el `sesion_id` e invalida el resto. El front detecta el 401 y redirige con aviso. |
 | **Login Google solo @academiamega.net** | 🟢 Implementado (+ email/contraseña) | Google: OAuth2 con `prompt=select_account` (sin auto-login) + `hosted_domain`; backend valida el `access_token` con `tokeninfo`. Coexiste con email+contraseña (también restringido al dominio). Requiere `GOOGLE_CLIENT_ID` en ambos lados. |
 | **Soportar 200 concurrentes** | 🔴 Pendiente | Requiere: Neon pooled connection, pool de SQLAlchemy, workers de uvicorn/gunicorn, plan de pago en Render (el free hiberna), quitar el seed/ALTER de cada arranque. |
@@ -119,6 +121,15 @@ Todo el temario cuelga de un **`Curso`**. La tabla intermedia `usuario_cursos` (
 - Dependencias en `routers/auth.py`: `require_gestor` (admin+superadmin) y `require_superadmin`.
 - El alcance se comprueba con `verificar_acceso_curso(usuario, curso_id)` y `cursos_permitidos_ids(usuario)` (devuelve `None` = todos).
 - **Al añadir un endpoint de gestión**, valida SIEMPRE el curso implicado (para tests/preguntas, resuélvelo a través de su `tema.curso_id`).
+
+## 5c. Tests: nombres, temas y modalidades
+
+- **Nombre del test** (`test_plantillas.numero_test`): admite cualquier texto ("001", "Simulacro 3"). Se normaliza con `services/tests_util.normalizar_nombre_test` (un número puro conserva el formato "001") y es único. Los listados usan orden natural (`clave_orden_natural`).
+- **Varios temas por test**: tabla `test_plantilla_temas`. `tema_id` sigue siendo el tema *principal* (por defecto para las preguntas nuevas); usa `TestPlantilla.tema_ids` para obtener todos. Cada pregunta pertenece a uno de los temas del test. Un profesor solo cambia las asignaciones de temas de sus cursos; no puede borrar un test compartido con otros cursos.
+- **Modalidades** (frontend `pages/Test.jsx`, scroll vertical continuo): *Práctica* corrige al marcar (varias correctas → botón Comprobar) y guarda con "Finalizar y guardar nota"; *Examen* no muestra correcciones hasta entregar, entonces muestra nota /10 + corrección completa y guarda automáticamente. Las no respondidas cuentan como fallo.
+- **Personaliza tu test** (`/personalizar`): temas de un curso + nº de preguntas (máx. 200) + tiempo (o sin límite; si hay límite, al agotarse se entrega solo) + modalidad. Cuenta para progreso, repaso, evolución y ranking. `test_intentos` guarda `total_preguntas`, `modo` y `personalizado` (sin plantilla).
+- **Varios cursos**: el Dashboard muestra pestañas de curso si el alumno tiene más de uno (se recuerda el último en `localStorage`).
+- **Driver de BD**: `models.normalizar_url_bd` fuerza `postgresql+psycopg2://` porque SQLAlchemy 2.1 usa psycopg 3 por defecto y no está instalado.
 
 ## 6. Convenciones de código
 
@@ -153,8 +164,7 @@ Todo el temario cuelga de un **`Curso`**. La tabla intermedia `usuario_cursos` (
 2. **Sin rate limiting**: los endpoints de IA (`/api/ia/*`) son abusables (coste de Gemini). Añadir límites (p. ej. `slowapi`).
 3. **JWT en `localStorage`**: expuesto a XSS. Aceptable para MVP; tenerlo presente.
 4. **Pool de conexiones sin configurar**: `create_engine(URL)` usa el pool por defecto (5). Con Neon + 200 usuarios hace falta pooled connection y ajustar `pool_size`/`max_overflow`/`pool_pre_ping`.
-5. **Dashboard hardcodea Tema 1 y Tema 2**: no lista los temas dinámicamente desde la BD.
-6. **`inyectar_preguntas.py`** usa `pandas`/`openpyxl`, que no están en `requirements.txt` (script local).
+5. **`inyectar_preguntas.py`** usa `pandas`/`openpyxl`, que no están en `requirements.txt` (script local).
 
 ---
 
@@ -173,7 +183,7 @@ Todo el temario cuelga de un **`Curso`**. La tabla intermedia `usuario_cursos` (
 - Cachear consultas frecuentes (ranking).
 
 **Fase 3 — Responsive y UX:**
-- Auditoría móvil de Test, Esquema (Mermaid con scroll horizontal), TestListado.
+- Auditoría móvil de TestListado.
 - Validar sesión al cargar la app llamando a `/api/auth/me` (evitar `nombre_usuario` obsoleto de localStorage).
 - Recuperación de contraseña; estados de carga/error consistentes.
 
@@ -181,6 +191,8 @@ Todo el temario cuelga de un **`Curso`**. La tabla intermedia `usuario_cursos` (
 - Roles, panel `/admin`, CRUD e importación de contenido, métricas, Sentry y uso de Gemini. Pendiente opcional: rediseñar el ranking (hoy inserta una fila por intento con el nombre; considerar agregación por usuario).
 
 **Al desplegar esta fase** (BD de Neon ya existente): ejecutar `alembic upgrade head` para aplicar la migración `0002` (columna `rol` + tabla `ia_llamadas`), y definir `ADMIN_EMAILS` con tu correo para tener el primer administrador.
+
+**Actualización sept. 2026**: al desplegar, ejecutar `alembic upgrade head` para aplicar la `0006` (tests multi-tema y modo en intentos). Es aditiva y copia el tema actual de cada test a la tabla nueva.
 
 ---
 

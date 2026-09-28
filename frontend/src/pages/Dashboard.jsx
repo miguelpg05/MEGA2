@@ -1,11 +1,13 @@
 import React, { useState, useEffect, useCallback } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { useNavigate, useLocation } from 'react-router-dom';
 import ResumenIA from '../components/ResumenIA';
 import RankingClase from '../components/RankingClase';
 import GraficoEvolucion from '../components/GraficoEvolucion';
 import { Cargando, MensajeError } from '../components/Estado';
 import { useAuth } from '../auth/AuthContext';
 import { apiFetch } from '../api';
+import SelectorCurso from '../components/SelectorCurso';
+import { agruparPorCurso, resolverGrupo, guardarCursoActivo } from '../utils/cursos';
 
 // Consejos de estudio reales (no inventamos estadísticas de rendimiento).
 // Rotan por día para dar algo de variedad sin afirmar datos falsos.
@@ -95,9 +97,9 @@ const TopicProgressCard = ({ topicName, temaId }) => {
         ></div>
       </div>
 
-      <div className="mt-6 grid grid-cols-1 sm:grid-cols-3 gap-3">
+      <div className="mt-6 grid grid-cols-1 sm:grid-cols-2 gap-3">
         <button
-          onClick={() => navigate('/listado-tests', { state: { temaId: temaId } })}
+          onClick={() => navigate('/listado-tests', { state: { temaId: temaId, temaNombre: topicName } })}
           className="py-2 px-3 bg-orange-500 hover:bg-orange-600 text-white font-medium rounded-lg transition-colors cursor-pointer"
         >
           Tests
@@ -109,20 +111,33 @@ const TopicProgressCard = ({ topicName, temaId }) => {
         >
           📄 Material
         </button>
-
-        <button
-          onClick={() => navigate('/esquema', { state: { temaId: temaId, temaNombre: topicName } })}
-          className="py-2 px-3 bg-white border border-gray-200 hover:border-orange-500 hover:text-orange-500 text-gray-600 font-medium rounded-lg transition-colors cursor-pointer"
-        >
-          Esquema
-        </button>
       </div>
     </div>
   );
 };
 
+// Tarjeta de acceso a "Personaliza tu test"
+const PersonalizaTestCard = ({ onAbrir, nombreCurso }) => (
+  <div className="p-6 bg-white border-2 border-orange-100 rounded-2xl shadow-sm flex flex-col sm:flex-row sm:items-center gap-4">
+    <div className="text-4xl" aria-hidden="true">🧩</div>
+    <div className="flex-1">
+      <h3 className="text-lg font-semibold text-gray-800">Personaliza tu test</h3>
+      <p className="text-sm text-gray-500 mt-1">
+        Elige los temas{nombreCurso ? ` de ${nombreCurso}` : ''}, cuántas preguntas quieres y tu tiempo disponible (o sin límite).
+      </p>
+    </div>
+    <button
+      onClick={onAbrir}
+      className="shrink-0 py-2.5 px-5 bg-orange-500 hover:bg-orange-600 text-white font-medium rounded-xl transition-colors cursor-pointer shadow-md shadow-orange-500/20"
+    >
+      Crear mi test ➔
+    </button>
+  </div>
+);
+
 export default function Dashboard() {
   const navigate = useNavigate();
+  const location = useLocation();
   const { usuario } = useAuth();
 
   // Nombre validado por el backend (AuthContext); si aún no llegó, usamos el de localStorage.
@@ -147,6 +162,18 @@ export default function Dashboard() {
   useEffect(() => { cargarTemas(); }, [cargarTemas]);
 
   const reintentarTemas = () => { setCargandoTemas(true); setErrorTemas(false); cargarTemas(); };
+
+  // Varios cursos: se agrupan los temas por curso y se muestra uno cada vez.
+  const grupos = agruparPorCurso(temas);
+  const [cursoElegido, setCursoElegido] = useState(location.state?.cursoId ?? null);
+  const grupoActivo = resolverGrupo(grupos, cursoElegido);
+  const temasVisibles = grupoActivo ? grupoActivo.temas : [];
+  const variosCursos = grupos.length > 1;
+
+  const cambiarCurso = (id) => {
+    setCursoElegido(id);
+    guardarCursoActivo(id);
+  };
 
   // Consejo del día (determinista según la fecha, sin datos inventados)
   const consejoDelDia = CONSEJOS_ESTUDIO[new Date().getDate() % CONSEJOS_ESTUDIO.length];
@@ -173,7 +200,12 @@ export default function Dashboard() {
             <h1 className="text-2xl sm:text-3xl font-light text-gray-900">
               Hola, <span className="font-semibold text-orange-500">{nombreUsuario}</span> 👋
             </h1>
-            <p className="text-gray-500 mt-2">¿Qué vamos a estudiar hoy?</p>
+            <p className="text-gray-500 mt-2">
+              ¿Qué vamos a estudiar hoy?
+              {variosCursos && grupoActivo && (
+                <> Estás en <strong className="text-gray-700">{grupoActivo.nombre}</strong>.</>
+              )}
+            </p>
           </div>
           <div className="flex flex-wrap gap-3 self-start md:self-auto">
             {esStaff && (
@@ -192,6 +224,11 @@ export default function Dashboard() {
             </button>
           </div>
         </header>
+
+        {/* SELECTOR DE CURSO (solo si está matriculado en varios) */}
+        {!cargandoTemas && !errorTemas && (
+          <SelectorCurso grupos={grupos} activo={grupoActivo?.id} onCambiar={cambiarCurso} className="mb-8" />
+        )}
 
         <div className="grid grid-cols-1 lg:grid-cols-3 gap-6 lg:gap-8">
 
@@ -218,11 +255,17 @@ export default function Dashboard() {
                 </p>
               </div>
             ) : (
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-                {temas.map((t) => (
-                  <TopicProgressCard key={t.id} topicName={t.nombre} temaId={t.id} />
-                ))}
-              </div>
+              <>
+                <PersonalizaTestCard
+                  nombreCurso={variosCursos ? grupoActivo?.nombre : null}
+                  onAbrir={() => navigate('/personalizar', { state: { cursoId: grupoActivo?.id } })}
+                />
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                  {temasVisibles.map((t) => (
+                    <TopicProgressCard key={t.id} topicName={t.nombre} temaId={t.id} />
+                  ))}
+                </div>
+              </>
             )}
 
             <ResumenIA />

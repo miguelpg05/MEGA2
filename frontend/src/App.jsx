@@ -6,11 +6,11 @@ import Dashboard from './pages/Dashboard';
 import Test from './pages/Test';
 import PanelAlumno from './pages/PanelAlumno';
 import Repaso from './pages/Repaso';
-import Esquema from './pages/Esquema';
 import Auth from './pages/Auth';
 import TestListado from './pages/TestListado';
 import MaterialTema from './pages/MaterialTema';
 import Admin from './pages/Admin';
+import PersonalizarTest from './pages/PersonalizarTest';
 
 import { AuthProvider, useAuth } from './auth/AuthContext';
 import { PantallaCarga } from './components/Estado';
@@ -68,7 +68,7 @@ export default function App() {
           <Route path="/test" element={<RutaProtegida><Test /></RutaProtegida>} />
           <Route path="/panel" element={<RutaProtegida><PanelAlumno /></RutaProtegida>} />
           <Route path="/repaso" element={<RutaProtegida><Repaso /></RutaProtegida>} />
-          <Route path="/esquema" element={<RutaProtegida><Esquema /></RutaProtegida>} />
+          <Route path="/personalizar" element={<RutaProtegida><PersonalizarTest /></RutaProtegida>} />
           <Route path="/listado-tests" element={<RutaProtegida><TestListado /></RutaProtegida>} />
           <Route path="/material" element={<RutaProtegida><MaterialTema /></RutaProtegida>} />
 

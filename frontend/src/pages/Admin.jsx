@@ -380,15 +380,58 @@ function TemasSection() {
 }
 
 // ==========================================
-// Sección: TESTS
+// Sección: TESTS (nombre libre y uno o varios temas)
 // ==========================================
+
+// Selector de temas con casillas, agrupado por curso. El primero marcado es el
+// tema principal (el que se propone por defecto a las preguntas nuevas).
+function SelectorTemas({ temas, seleccion, onChange }) {
+  const grupos = [];
+  const porCurso = new Map();
+  temas.forEach((t) => {
+    const clave = t.curso_id ?? 'sin';
+    if (!porCurso.has(clave)) {
+      const g = { clave, nombre: t.curso || 'Sin curso', temas: [] };
+      porCurso.set(clave, g);
+      grupos.push(g);
+    }
+    porCurso.get(clave).temas.push(t);
+  });
+  const alternar = (id) => onChange(seleccion.includes(id) ? seleccion.filter((x) => x !== id) : [...seleccion, id]);
+
+  if (temas.length === 0) return <p className="text-sm text-gray-400">Crea antes algún tema.</p>;
+  return (
+    <div className="space-y-3 max-h-64 overflow-y-auto pr-1">
+      {grupos.map((g) => (
+        <div key={g.clave}>
+          {grupos.length > 1 && <p className="text-xs font-semibold text-gray-400 uppercase tracking-wide mb-1.5">{g.nombre}</p>}
+          <div className="flex flex-wrap gap-2">
+            {g.temas.map((t) => {
+              const marcado = seleccion.includes(t.id);
+              const principal = seleccion[0] === t.id;
+              return (
+                <button type="button" key={t.id} onClick={() => alternar(t.id)}
+                  className={`px-3 py-1.5 rounded-lg border text-sm cursor-pointer transition-colors ${marcado ? 'bg-orange-50 border-orange-400 text-orange-700 font-medium' : 'bg-gray-50 border-gray-200 text-gray-600 hover:border-orange-300'}`}>
+                  {marcado ? '✓ ' : ''}{t.nombre}
+                  {principal && seleccion.length > 1 && <span className="ml-1 text-[10px] uppercase opacity-70">(principal)</span>}
+                </button>
+              );
+            })}
+          </div>
+        </div>
+      ))}
+    </div>
+  );
+}
+
 function TestsSection() {
   const [temas, setTemas] = useState([]);
   const [tests, setTests] = useState([]);
   const [cargando, setCargando] = useState(true);
   const [error, setError] = useState(false);
-  const [numero, setNumero] = useState('');
-  const [temaId, setTemaId] = useState('');
+  const [nombre, setNombre] = useState('');
+  const [temaIds, setTemaIds] = useState([]);
+  const [filtroTema, setFiltroTema] = useState('');
   const [aviso, setAviso] = useState('');
 
   const cargar = useCallback(() => {
@@ -402,56 +445,71 @@ function TestsSection() {
   const crear = async (e) => {
     e.preventDefault();
     setAviso('');
+    if (!nombre.trim()) { setAviso('Escribe un nombre para el test.'); return; }
+    if (temaIds.length === 0) { setAviso('Asigna el test al menos a un tema.'); return; }
     try {
       await apiJson('/api/admin/tests', {
         method: 'POST',
-        body: JSON.stringify({ numero_test: numero, tema_id: Number(temaId), total_preguntas: 10 }),
+        body: JSON.stringify({ numero_test: nombre, tema_ids: temaIds, total_preguntas: 10 }),
       });
-      setNumero(''); setTemaId('');
+      setNombre(''); setTemaIds([]);
       cargar();
     } catch (err) { setAviso(err.message); }
   };
 
   const borrar = async (id) => {
-    if (!window.confirm('¿Eliminar este test?')) return;
+    if (!window.confirm('¿Eliminar este test? Se borrarán también sus preguntas.')) return;
     try { await apiJson(`/api/admin/tests/${id}`, { method: 'DELETE' }); cargar(); }
     catch (err) { setAviso(err.message); }
   };
 
-  if (cargando) return <Cargando texto="Cargando tests..." className="py-12" />;
-  if (error) return <MensajeError texto="No se pudieron cargar los tests." onReintentar={reintentar} />;
-
-  const editar = async (id, numero_test, tema_id) => {
+  // Devuelve true si se guardó (para cerrar el modo edición)
+  const editar = async (id, numero_test, tema_ids) => {
     setAviso('');
     try {
       await apiJson(`/api/admin/tests/${id}`, {
         method: 'PUT',
-        body: JSON.stringify({ numero_test, tema_id: Number(tema_id), total_preguntas: 10 }),
+        body: JSON.stringify({ numero_test, tema_ids, total_preguntas: 10 }),
       });
       cargar();
-    } catch (err) { setAviso(err.message); }
+      return true;
+    } catch (err) { setAviso(err.message); return false; }
   };
 
   if (cargando) return <Cargando texto="Cargando tests..." className="py-12" />;
   if (error) return <MensajeError texto="No se pudieron cargar los tests." onReintentar={reintentar} />;
 
+  const visibles = filtroTema ? tests.filter((t) => (t.tema_ids || []).includes(Number(filtroTema))) : tests;
+
   return (
     <div className="space-y-6">
-      <form onSubmit={crear} className="bg-white border border-gray-100 rounded-2xl p-5 shadow-sm flex flex-col sm:flex-row gap-3">
-        <input value={numero} onChange={(e) => setNumero(e.target.value)} required placeholder="Nº de test (ej. 001)"
-          className="flex-1 px-4 py-2 rounded-xl bg-gray-50 border border-gray-200 outline-none focus:ring-2 focus:ring-orange-500" />
-        <select value={temaId} onChange={(e) => setTemaId(e.target.value)} required
-          className="flex-1 px-4 py-2 rounded-xl bg-gray-50 border border-gray-200 outline-none focus:ring-2 focus:ring-orange-500">
-          <option value="">Selecciona tema…</option>
-          {temas.map((t) => <option key={t.id} value={t.id}>{t.nombre}</option>)}
-        </select>
-        <button className="px-5 py-2 bg-orange-500 hover:bg-orange-600 text-white font-medium rounded-xl cursor-pointer">Crear test</button>
+      <form onSubmit={crear} className="bg-white border border-gray-100 rounded-2xl p-5 shadow-sm space-y-4">
+        <h4 className="font-semibold text-gray-700">Nuevo test</h4>
+        <input value={nombre} onChange={(e) => setNombre(e.target.value)} maxLength={120}
+          placeholder="Nombre del test (cualquier texto: «001», «Simulacro 3», «Repaso bloque I»…)"
+          className="w-full px-4 py-2 rounded-xl bg-gray-50 border border-gray-200 outline-none focus:ring-2 focus:ring-orange-500" />
+        <div>
+          <p className="text-sm text-gray-500 mb-2">Temas a los que se asigna <span className="text-gray-400">(puedes marcar varios)</span></p>
+          <SelectorTemas temas={temas} seleccion={temaIds} onChange={setTemaIds} />
+        </div>
+        <div className="flex justify-end">
+          <button className="px-5 py-2 bg-orange-500 hover:bg-orange-600 text-white font-medium rounded-xl cursor-pointer">Crear test</button>
+        </div>
       </form>
       {aviso && <p className="text-sm text-red-600">{aviso}</p>}
 
+      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
+        <p className="text-sm text-gray-500">{visibles.length} test{visibles.length === 1 ? '' : 's'}</p>
+        <select value={filtroTema} onChange={(e) => setFiltroTema(e.target.value)}
+          className="px-3 py-2 rounded-xl bg-white border border-gray-200 text-sm outline-none focus:ring-2 focus:ring-orange-500">
+          <option value="">Todos los temas</option>
+          {temas.map((t) => <option key={t.id} value={t.id}>{t.nombre}</option>)}
+        </select>
+      </div>
+
       <div className="bg-white border border-gray-100 rounded-2xl shadow-sm divide-y divide-gray-100">
-        {tests.length === 0 ? <p className="p-5 text-sm text-gray-400">No hay tests.</p> :
-          tests.map((t) => (
+        {visibles.length === 0 ? <p className="p-5 text-sm text-gray-400">No hay tests.</p> :
+          visibles.map((t) => (
             <TestFila key={t.id} test={t} temas={temas} onEditar={editar} onBorrar={borrar} />
           ))}
       </div>
@@ -459,43 +517,55 @@ function TestsSection() {
   );
 }
 
-// Una fila de test: ver o editar (nº y tema)
+// Una fila de test: ver o editar (nombre y temas)
 function TestFila({ test, temas, onEditar, onBorrar }) {
   const [editando, setEditando] = useState(false);
-  const [numero, setNumero] = useState(test.numero_test);
-  const [temaId, setTemaId] = useState(test.tema_id || '');
-  const nombreTema = temas.find((t) => t.id === test.tema_id)?.nombre || `Tema ${test.tema_id}`;
+  const [nombre, setNombre] = useState(test.numero_test);
+  const [temaIds, setTemaIds] = useState(test.tema_ids || (test.tema_id ? [test.tema_id] : []));
+  const temasDelTest = test.temas || [];
+  // Temas del test que este usuario no gestiona (otros cursos): se conservan al guardar
+  const ajenos = temasDelTest.filter((t) => !temas.some((x) => x.id === t.id));
+
+  const empezar = () => {
+    setNombre(test.numero_test);
+    setTemaIds(test.tema_ids || []);
+    setEditando(true);
+  };
 
   const guardar = async () => {
-    await onEditar(test.id, numero, temaId);
-    setEditando(false);
+    if (await onEditar(test.id, nombre, temaIds)) setEditando(false);
   };
 
   if (editando) {
     return (
-      <div className="p-4 grid grid-cols-1 sm:grid-cols-3 gap-2">
-        <input value={numero} onChange={(e) => setNumero(e.target.value)}
-          className="px-3 py-2 rounded-lg bg-gray-50 border border-gray-200 outline-none focus:ring-2 focus:ring-orange-500" />
-        <select value={temaId} onChange={(e) => setTemaId(e.target.value)}
-          className="px-3 py-2 rounded-lg bg-gray-50 border border-gray-200 outline-none focus:ring-2 focus:ring-orange-500">
-          {temas.map((t) => <option key={t.id} value={t.id}>{t.nombre}</option>)}
-        </select>
-        <div className="flex gap-2">
-          <button onClick={guardar} className="flex-1 px-3 py-2 bg-orange-500 hover:bg-orange-600 text-white text-sm font-medium rounded-lg cursor-pointer">Guardar</button>
+      <div className="p-4 space-y-3 bg-orange-50/40">
+        <input value={nombre} onChange={(e) => setNombre(e.target.value)} maxLength={120}
+          className="w-full px-3 py-2 rounded-lg bg-white border border-gray-200 outline-none focus:ring-2 focus:ring-orange-500" />
+        <SelectorTemas temas={temas} seleccion={temaIds} onChange={setTemaIds} />
+        {ajenos.length > 0 && (
+          <p className="text-xs text-gray-400">También asignado a temas de otros cursos (se mantienen): {ajenos.map((t) => t.nombre).join(', ')}</p>
+        )}
+        <div className="flex gap-2 justify-end">
           <button onClick={() => setEditando(false)} className="px-3 py-2 bg-gray-100 text-gray-600 text-sm rounded-lg cursor-pointer">Cancelar</button>
+          <button onClick={guardar} className="px-4 py-2 bg-orange-500 hover:bg-orange-600 text-white text-sm font-medium rounded-lg cursor-pointer">Guardar</button>
         </div>
       </div>
     );
   }
 
   return (
-    <div className="p-4 flex justify-between items-center gap-3">
+    <div className="p-4 flex justify-between items-start gap-3">
       <div className="min-w-0">
-        <p className="font-medium text-gray-800">Test {test.numero_test}</p>
-        <p className="text-xs text-gray-400 truncate">ID {test.id} · {nombreTema}</p>
+        <p className="font-medium text-gray-800 break-words">{test.numero_test}</p>
+        <div className="flex flex-wrap gap-1.5 mt-1.5">
+          {temasDelTest.map((t) => (
+            <span key={t.id} className="text-xs bg-gray-100 text-gray-600 px-2 py-0.5 rounded-full">{t.nombre}</span>
+          ))}
+        </div>
+        <p className="text-xs text-gray-400 mt-1">ID {test.id} · {test.num_preguntas ?? 0} preguntas</p>
       </div>
       <div className="flex gap-2 shrink-0">
-        <button onClick={() => setEditando(true)} className="text-sm text-orange-600 hover:bg-orange-50 px-3 py-1.5 rounded-lg cursor-pointer">Editar</button>
+        <button onClick={empezar} className="text-sm text-orange-600 hover:bg-orange-50 px-3 py-1.5 rounded-lg cursor-pointer">Editar</button>
         <button onClick={() => onBorrar(test.id)} className="text-sm text-red-600 hover:bg-red-50 px-3 py-1.5 rounded-lg cursor-pointer">Eliminar</button>
       </div>
     </div>
@@ -505,7 +575,7 @@ function TestFila({ test, temas, onEditar, onBorrar }) {
 // ==========================================
 // Sección: PREGUNTAS
 // ==========================================
-const PREGUNTA_VACIA = { enunciado: '', opcion_a: '', opcion_b: '', opcion_c: '', opcion_d: '', correctas: ['A'], explicacion: '' };
+const PREGUNTA_VACIA = { enunciado: '', opcion_a: '', opcion_b: '', opcion_c: '', opcion_d: '', correctas: ['A'], explicacion: '', tema_id: '' };
 
 function PreguntasSection() {
   const [tests, setTests] = useState([]);
@@ -543,12 +613,15 @@ function PreguntasSection() {
     if (!testId) { setAviso('Selecciona primero un test.'); return; }
     if (form.correctas.length === 0) { setAviso('Marca al menos una opción correcta.'); return; }
     const test = tests.find((t) => String(t.id) === String(testId));
+    const temaPregunta = form.tema_id && (test.tema_ids || []).includes(Number(form.tema_id))
+      ? Number(form.tema_id)
+      : test.tema_id;
     const cuerpo = {
       enunciado: form.enunciado,
       opcion_a: form.opcion_a, opcion_b: form.opcion_b, opcion_c: form.opcion_c, opcion_d: form.opcion_d,
       explicacion: form.explicacion,
       respuesta_correcta: [...form.correctas].sort().join(''),
-      tema_id: test.tema_id,
+      tema_id: temaPregunta,
       test_plantilla_id: Number(testId),
     };
     try {
@@ -569,6 +642,7 @@ function PreguntasSection() {
       opcion_a: p.opcion_a || '', opcion_b: p.opcion_b || '', opcion_c: p.opcion_c || '', opcion_d: p.opcion_d || '',
       correctas: p.respuestas_correctas?.length ? p.respuestas_correctas : ['A'],
       explicacion: p.explicacion || '',
+      tema_id: p.tema_id || '',
     });
     setAviso('');
   };
@@ -598,6 +672,7 @@ function PreguntasSection() {
   if (error) return <MensajeError texto="No se pudieron cargar los tests." onReintentar={() => { setCargandoTests(true); cargarTests(); }} />;
 
   const set = (campo) => (e) => setForm({ ...form, [campo]: e.target.value });
+  const testSeleccionado = tests.find((t) => String(t.id) === String(testId));
   const toggleCorrecta = (letra) => setForm((f) => ({
     ...f,
     correctas: f.correctas.includes(letra) ? f.correctas.filter((l) => l !== letra) : [...f.correctas, letra],
@@ -609,7 +684,7 @@ function PreguntasSection() {
         <select value={testId} onChange={(e) => seleccionarTest(e.target.value)}
           className="flex-1 px-4 py-2 rounded-xl bg-gray-50 border border-gray-200 outline-none focus:ring-2 focus:ring-orange-500">
           <option value="">Selecciona un test…</option>
-          {tests.map((t) => <option key={t.id} value={t.id}>Test {t.numero_test}</option>)}
+          {tests.map((t) => <option key={t.id} value={t.id}>{t.numero_test}{t.temas?.length > 1 ? ` · ${t.temas.length} temas` : ''}</option>)}
         </select>
         <label className="text-sm text-gray-600 cursor-pointer bg-gray-100 hover:bg-gray-200 px-4 py-2 rounded-xl">
           Importar CSV/XLSX
@@ -624,6 +699,16 @@ function PreguntasSection() {
             <h4 className="font-semibold text-gray-700">{editandoId ? 'Editar pregunta' : 'Nueva pregunta'}</h4>
             {editandoId && <button type="button" onClick={cancelarEdicion} className="text-sm text-gray-500 hover:underline cursor-pointer">Cancelar edición</button>}
           </div>
+
+          {testSeleccionado?.temas?.length > 1 && (
+            <label className="flex flex-col sm:flex-row sm:items-center gap-2 text-sm text-gray-500">
+              Tema de la pregunta:
+              <select value={form.tema_id || testSeleccionado.tema_id} onChange={set('tema_id')}
+                className="flex-1 px-3 py-2 rounded-xl bg-gray-50 border border-gray-200 outline-none focus:ring-2 focus:ring-orange-500">
+                {testSeleccionado.temas.map((t) => <option key={t.id} value={t.id}>{t.nombre}</option>)}
+              </select>
+            </label>
+          )}
 
           <textarea value={form.enunciado} onChange={set('enunciado')} required placeholder="Enunciado"
             className="w-full px-4 py-2 rounded-xl bg-gray-50 border border-gray-200 outline-none focus:ring-2 focus:ring-orange-500" rows={2} />

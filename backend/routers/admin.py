@@ -13,7 +13,7 @@ import os
 from datetime import datetime, timedelta
 
 from fastapi import APIRouter, Depends, HTTPException, UploadFile, File, Query
-from sqlalchemy import func, cast, Integer
+from sqlalchemy import func, cast, Integer, or_
 from sqlalchemy.orm import Session
 
 from models import (
@@ -40,6 +40,7 @@ from routers.auth import (
     ROLES_VALIDOS,
 )
 from services.preguntas import normalizar_respuesta, letras_correctas
+from services.tests_util import normalizar_nombre_test, clave_orden_natural
 
 router = APIRouter(prefix="/api/admin", tags=["Administración"])
 
@@ -71,6 +72,12 @@ def _temas_permitidos_ids(db: Session, usuario: Usuario):
         return []
     return [t[0] for t in db.query(Tema.id).filter(Tema.curso_id.in_(permitidos)).all()]
 
+def _filtro_tests_de_temas(tema_ids):
+    """Condición SQL: tests asignados a alguno de esos temas (tabla intermedia o
+    tema principal, para tolerar tests antiguos)."""
+    ids = list(tema_ids) or [-1]
+    return or_(TestPlantilla.tema_id.in_(ids), TestPlantilla.temas.any(Tema.id.in_(ids)))
+
 def _tests_permitidos_ids(db: Session, usuario: Usuario):
     """IDs de plantillas de test accesibles. None = todas (superadmin)."""
     temas = _temas_permitidos_ids(db, usuario)
@@ -78,7 +85,7 @@ def _tests_permitidos_ids(db: Session, usuario: Usuario):
         return None
     if not temas:
         return []
-    return [t[0] for t in db.query(TestPlantilla.id).filter(TestPlantilla.tema_id.in_(temas)).all()]
+    return [t[0] for t in db.query(TestPlantilla.id).filter(_filtro_tests_de_temas(temas)).all()]
 
 
 # ==========================================
@@ -140,7 +147,16 @@ def listar_temas(
     if curso_id:
         verificar_acceso_curso(usuario, curso_id)
         query = query.filter(Tema.curso_id == curso_id)
-    return query.order_by(Tema.id).all()
+    return [
+        {
+            "id": t.id,
+            "nombre": t.nombre,
+            "bloque": t.bloque,
+            "curso_id": t.curso_id,
+            "curso": t.curso.nombre if t.curso else None,  # para agrupar en el panel
+        }
+        for t in query.order_by(Tema.id).all()
+    ]
 
 @router.post("/temas")
 def crear_tema(datos: TemaIn, usuario: Usuario = Depends(require_gestor), db: Session = Depends(get_db)):
@@ -171,6 +187,11 @@ def editar_tema(tema_id: int, datos: TemaIn, usuario: Usuario = Depends(require_
 def borrar_tema(tema_id: int, usuario: Usuario = Depends(require_gestor), db: Session = Depends(get_db)):
     tema = _tema_o_404(db, tema_id)
     verificar_acceso_curso(usuario, tema.curso_id)
+    # Tests multi-tema cuyo tema PRINCIPAL es este: pasa a serlo otro de sus temas
+    for test in db.query(TestPlantilla).filter(TestPlantilla.tema_id == tema.id).all():
+        otros = [t.id for t in test.temas if t.id != tema.id]
+        if otros:
+            test.tema_id = otros[0]
     db.delete(tema)
     db.commit()
     return {"mensaje": "Tema eliminado"}
@@ -242,8 +263,63 @@ def borrar_material(material_id: int, usuario: Usuario = Depends(require_gestor)
 
 
 # ==========================================
-# PLANTILLAS DE TEST
+# PLANTILLAS DE TEST (nombre libre y uno o VARIOS temas)
 # ==========================================
+def _test_dict(test: TestPlantilla, nombres_temas: dict, num_preguntas: int = 0) -> dict:
+    ids = test.tema_ids
+    return {
+        "id": test.id,
+        "numero_test": test.numero_test,   # nombre del test (cualquier texto)
+        "tema_id": test.tema_id,           # tema principal
+        "tema_ids": ids,                   # todos los temas asignados
+        "temas": [{"id": i, "nombre": nombres_temas.get(i, f"Tema {i}")} for i in ids],
+        "total_preguntas": test.total_preguntas,
+        "num_preguntas": num_preguntas,
+    }
+
+def _nombres_temas(db: Session) -> dict:
+    return {tid: nombre for tid, nombre in db.query(Tema.id, Tema.nombre).all()}
+
+def _validar_nombre_test(db: Session, nombre_crudo, excluir_id=None) -> str:
+    nombre = normalizar_nombre_test(nombre_crudo)
+    if not nombre:
+        raise HTTPException(status_code=400, detail="El nombre del test no puede estar vacío.")
+    q = db.query(TestPlantilla).filter(TestPlantilla.numero_test == nombre)
+    if excluir_id is not None:
+        q = q.filter(TestPlantilla.id != excluir_id)
+    if q.first():
+        raise HTTPException(status_code=400, detail=f"Ya existe un test llamado «{nombre}».")
+    return nombre
+
+def _ids_pedidos(datos: TestPlantillaIn) -> list:
+    """Temas pedidos, sin duplicados y conservando el orden (el primero = principal)."""
+    ids = list(datos.tema_ids or [])
+    if not ids and datos.tema_id:
+        ids = [datos.tema_id]
+    vistos, resultado = set(), []
+    for i in ids:
+        if i not in vistos:
+            vistos.add(i)
+            resultado.append(int(i))
+    return resultado
+
+def _temas_validados(db: Session, usuario: Usuario, ids: list) -> list:
+    """Carga los temas y comprueba el acceso del usuario a cada uno."""
+    temas = []
+    for tid in ids:
+        tema = _tema_o_404(db, tid)
+        verificar_acceso_curso(usuario, tema.curso_id)
+        temas.append(tema)
+    return temas
+
+def _puede_ver_test(db: Session, usuario: Usuario, test: TestPlantilla) -> bool:
+    permitidos = _temas_permitidos_ids(db, usuario)
+    if permitidos is None:
+        return True
+    ids = test.tema_ids
+    # Tests huérfanos (sin temas existentes) solo los gestiona el superadmin
+    return any(i in permitidos for i in ids)
+
 @router.get("/tests")
 def listar_tests(
     tema_id: int = Query(None),
@@ -253,55 +329,83 @@ def listar_tests(
     query = db.query(TestPlantilla)
     permitidos = _temas_permitidos_ids(db, usuario)
     if permitidos is not None:
-        query = query.filter(TestPlantilla.tema_id.in_(permitidos or [-1]))
+        query = query.filter(_filtro_tests_de_temas(permitidos))
     if tema_id:
         verificar_acceso_curso(usuario, _tema_o_404(db, tema_id).curso_id)
-        query = query.filter(TestPlantilla.tema_id == tema_id)
-    return query.order_by(TestPlantilla.numero_test).all()
+        query = query.filter(_filtro_tests_de_temas([tema_id]))
+    tests = sorted(query.all(), key=lambda t: clave_orden_natural(t.numero_test))
+
+    conteo = dict(
+        db.query(Pregunta.test_plantilla_id, func.count(Pregunta.id))
+        .filter(Pregunta.test_plantilla_id.in_([t.id for t in tests] or [-1]))
+        .group_by(Pregunta.test_plantilla_id)
+        .all()
+    )
+    nombres = _nombres_temas(db)
+    return [_test_dict(t, nombres, conteo.get(t.id, 0)) for t in tests]
 
 @router.post("/tests")
 def crear_test(datos: TestPlantillaIn, usuario: Usuario = Depends(require_gestor), db: Session = Depends(get_db)):
-    verificar_acceso_curso(usuario, _tema_o_404(db, datos.tema_id).curso_id)
-    if db.query(TestPlantilla).filter(TestPlantilla.numero_test == datos.numero_test).first():
-        raise HTTPException(status_code=400, detail="Ya existe un test con ese número")
+    ids = _ids_pedidos(datos)
+    if not ids:
+        raise HTTPException(status_code=400, detail="Asigna el test al menos a un tema.")
+    temas = _temas_validados(db, usuario, ids)
     test = TestPlantilla(
-        numero_test=datos.numero_test.strip(),
-        tema_id=datos.tema_id,
+        numero_test=_validar_nombre_test(db, datos.numero_test),
+        tema_id=temas[0].id,
         total_preguntas=datos.total_preguntas,
     )
+    test.temas = temas
     db.add(test)
     db.commit()
     db.refresh(test)
-    return test
+    return _test_dict(test, _nombres_temas(db))
 
 @router.put("/tests/{test_id}")
 def editar_test(test_id: int, datos: TestPlantillaIn, usuario: Usuario = Depends(require_gestor), db: Session = Depends(get_db)):
     test = db.query(TestPlantilla).filter(TestPlantilla.id == test_id).first()
     if not test:
         raise HTTPException(status_code=404, detail="Test no encontrado")
-    # Acceso al curso actual (tolerante si el tema fue borrado) y al de destino
-    verificar_acceso_curso(usuario, _curso_id_de_tema(db, test.tema_id))
-    verificar_acceso_curso(usuario, _tema_o_404(db, datos.tema_id).curso_id)
-    # Evitar duplicar el número de test en otra plantilla
-    otro = db.query(TestPlantilla).filter(
-        TestPlantilla.numero_test == datos.numero_test.strip(),
-        TestPlantilla.id != test_id,
-    ).first()
-    if otro:
-        raise HTTPException(status_code=400, detail="Ya existe otro test con ese número")
-    test.numero_test = datos.numero_test.strip()
-    test.tema_id = datos.tema_id
+    if not _puede_ver_test(db, usuario, test):
+        raise HTTPException(status_code=403, detail="No tienes acceso a este test.")
+
+    pedidos = _ids_pedidos(datos)
+    permitidos = _temas_permitidos_ids(db, usuario)
+    # Un profesor solo cambia las asignaciones de SUS temas: las de temas de otros
+    # cursos (si el test está compartido) se conservan tal cual.
+    ajenos = [] if permitidos is None else [i for i in test.tema_ids if i not in permitidos]
+    ids = [i for i in pedidos if i not in ajenos] + ajenos
+    if not ids:
+        raise HTTPException(status_code=400, detail="Asigna el test al menos a un tema.")
+    temas_propios = _temas_validados(db, usuario, [i for i in ids if i not in ajenos])
+    temas_ajenos = db.query(Tema).filter(Tema.id.in_(ajenos or [-1])).all()
+    temas = temas_propios + temas_ajenos
+    if not temas:
+        raise HTTPException(status_code=400, detail="Asigna el test al menos a un tema.")
+
+    test.numero_test = _validar_nombre_test(db, datos.numero_test, excluir_id=test_id)
+    test.temas = temas
+    # El tema principal se conserva si sigue asignado; si no, pasa a ser el primero
+    if test.tema_id not in [t.id for t in temas]:
+        test.tema_id = temas[0].id
     test.total_preguntas = datos.total_preguntas
     db.commit()
     db.refresh(test)
-    return test
+    return _test_dict(test, _nombres_temas(db))
 
 @router.delete("/tests/{test_id}")
 def borrar_test(test_id: int, usuario: Usuario = Depends(require_gestor), db: Session = Depends(get_db)):
     test = db.query(TestPlantilla).filter(TestPlantilla.id == test_id).first()
     if not test:
         raise HTTPException(status_code=404, detail="Test no encontrado")
-    verificar_acceso_curso(usuario, _curso_id_de_tema(db, test.tema_id))
+    permitidos = _temas_permitidos_ids(db, usuario)
+    if permitidos is not None:
+        ids = test.tema_ids
+        if not ids or any(i not in permitidos for i in ids):
+            raise HTTPException(
+                status_code=403,
+                detail="Este test está asignado también a temas de otros cursos. Quita tus temas del test en lugar de borrarlo.",
+            )
     db.delete(test)
     db.commit()
     return {"mensaje": "Test eliminado"}
@@ -324,6 +428,16 @@ def _pregunta_dict(p: Pregunta) -> dict:
         "tema_id": p.tema_id,
         "test_plantilla_id": p.test_plantilla_id,
     }
+
+def _validar_tema_de_pregunta(db: Session, datos: PreguntaIn) -> None:
+    """Si la pregunta va dentro de un test, su tema debe ser uno de los del test."""
+    if not datos.test_plantilla_id:
+        return
+    test = db.query(TestPlantilla).filter(TestPlantilla.id == datos.test_plantilla_id).first()
+    if not test:
+        raise HTTPException(status_code=404, detail="Test no encontrado")
+    if datos.tema_id not in test.tema_ids:
+        raise HTTPException(status_code=400, detail="El tema de la pregunta debe ser uno de los temas asignados al test.")
 
 def _validar_respuesta(datos: PreguntaIn) -> str:
     """Normaliza y valida las letras correctas (una o varias)."""
@@ -353,6 +467,7 @@ def listar_preguntas(
 @router.post("/preguntas")
 def crear_pregunta(datos: PreguntaIn, usuario: Usuario = Depends(require_gestor), db: Session = Depends(get_db)):
     verificar_acceso_curso(usuario, _tema_o_404(db, datos.tema_id).curso_id)
+    _validar_tema_de_pregunta(db, datos)
     pregunta = Pregunta(
         enunciado=datos.enunciado.strip(),
         opcion_a=datos.opcion_a.strip(),
@@ -376,6 +491,7 @@ def editar_pregunta(pregunta_id: int, datos: PreguntaIn, usuario: Usuario = Depe
         raise HTTPException(status_code=404, detail="Pregunta no encontrada")
     verificar_acceso_curso(usuario, _curso_id_de_tema(db, pregunta.tema_id))
     verificar_acceso_curso(usuario, _tema_o_404(db, datos.tema_id).curso_id)
+    _validar_tema_de_pregunta(db, datos)
     pregunta.enunciado = datos.enunciado.strip()
     pregunta.opcion_a = datos.opcion_a.strip()
     pregunta.opcion_b = datos.opcion_b.strip()
@@ -428,8 +544,8 @@ async def importar_preguntas(
     usuario: Usuario = Depends(require_gestor),
     db: Session = Depends(get_db),
 ):
-    """Importa preguntas desde CSV/XLSX con columnas: tema_id, numero_test,
-    enunciado, opcion_a..d, respuesta_correcta, explicacion.
+    """Importa preguntas desde CSV/XLSX con columnas: tema_id, numero_test (nombre
+    del test, cualquier texto), enunciado, opcion_a..d, respuesta_correcta, explicacion.
     Solo se aceptan filas de temas a los que tengas acceso."""
     contenido = await archivo.read()
     nombre = (archivo.filename or "").lower()
@@ -451,16 +567,24 @@ async def importar_preguntas(
                 raise ValueError(f"el tema {tema_id} no existe")
             verificar_acceso_curso(usuario, tema.curso_id)
 
-            numero_test = str(int(float(fila["numero_test"]))).zfill(3)
-            plantilla = db.query(TestPlantilla).filter(
-                TestPlantilla.tema_id == tema_id,
-                TestPlantilla.numero_test == numero_test,
-            ).first()
+            # El nombre del test admite cualquier texto ("001", "Simulacro 2"...)
+            numero_test = normalizar_nombre_test(fila.get("numero_test"))
+            if not numero_test:
+                raise ValueError("falta el nombre del test (columna numero_test)")
+            plantilla = db.query(TestPlantilla).filter(TestPlantilla.numero_test == numero_test).first()
             if not plantilla:
                 plantilla = TestPlantilla(tema_id=tema_id, numero_test=numero_test, total_preguntas=10)
+                plantilla.temas = [tema]
                 db.add(plantilla)
                 db.commit()
                 db.refresh(plantilla)
+            elif tema_id not in plantilla.tema_ids:
+                # Mismo test en otro tema: se asigna también a este tema (test multi-tema),
+                # siempre que el test ya sea visible para quien importa.
+                if not _puede_ver_test(db, usuario, plantilla):
+                    raise ValueError(f"ya existe un test llamado «{numero_test}» en otro curso")
+                plantilla.temas.append(tema)
+                db.commit()
 
             db.add(Pregunta(
                 tema_id=tema_id,

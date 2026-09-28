@@ -2,7 +2,8 @@ import pandas as pd
 import os
 from sqlalchemy.orm import Session
 from sqlalchemy import text
-from models import SessionLocal, Pregunta, TestPlantilla
+from models import SessionLocal, Pregunta, TestPlantilla, Tema
+from services.tests_util import normalizar_nombre_test
 
 def inyectar_desde_excel(archivo_excel="preguntas.xlsx"):
     if not os.path.exists(archivo_excel):
@@ -32,21 +33,24 @@ def inyectar_desde_excel(archivo_excel="preguntas.xlsx"):
         for index, fila in df.iterrows():
             t_id = int(fila['tema_id'])
             
-            # --- SOLUCIÓN AQUÍ ---
-            # Cogemos el número del Excel (ej: 1), nos aseguramos de que sea un entero y lo convertimos a texto con ceros delante (ej: "001")
-            n_test = str(int(fila['numero_test'])).zfill(3)
+            # Nombre del test: admite cualquier texto ("Simulacro 2"); si es un número
+            # puro (ej: 1) se mantiene el formato histórico con ceros ("001").
+            n_test = normalizar_nombre_test(fila['numero_test'])
 
-            # 1. Buscamos si ya existe ese Test en la base de datos
-            plantilla = db.query(TestPlantilla).filter(
-                TestPlantilla.tema_id == t_id,
-                TestPlantilla.numero_test == n_test
-            ).first()
+            # 1. Buscamos si ya existe ese Test (el nombre es único)
+            plantilla = db.query(TestPlantilla).filter(TestPlantilla.numero_test == n_test).first()
+            tema = db.query(Tema).filter(Tema.id == t_id).first()
 
             if not plantilla:
                 plantilla = TestPlantilla(tema_id=t_id, numero_test=n_test)
+                if tema:
+                    plantilla.temas = [tema]
                 db.add(plantilla)
                 db.commit()
                 db.refresh(plantilla)
+            elif tema and t_id not in plantilla.tema_ids:
+                plantilla.temas.append(tema)  # mismo test asignado a varios temas
+                db.commit()
 
             # 2. Guardamos la pregunta
             pregunta = Pregunta(

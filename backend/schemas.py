@@ -65,12 +65,6 @@ class PuntosRequest(BaseModel):
 class RepasoCompletado(BaseModel):
     fallo_id: int
 
-class EsquemaRequest(BaseModel):
-    tema_nombre: str
-    tema_id: Optional[int] = None
-    material_id: Optional[int] = None  # PDF concreto del tema sobre el que basar el esquema
-    texto: Optional[str] = None        # texto libre aportado por el usuario
-
 # --- ESQUEMAS DEL PANEL DE ADMINISTRACIÓN ---
 
 class CursoIn(BaseModel):
@@ -86,8 +80,9 @@ class TemaIn(BaseModel):
     curso_id: Optional[int] = None
 
 class TestPlantillaIn(BaseModel):
-    numero_test: str
-    tema_id: int
+    numero_test: str                      # nombre del test: admite cualquier texto
+    tema_ids: Optional[List[int]] = None  # uno o VARIOS temas (el primero es el principal)
+    tema_id: Optional[int] = None         # compatibilidad: un único tema
     total_preguntas: int = 10
 
 class PreguntaIn(BaseModel):

@@ -19,12 +19,13 @@ if config.config_file_name is not None:
     fileConfig(config.config_file_name)
 
 # Metadata de los modelos para el autogenerate
-from models import Base  # noqa: E402
+from models import Base, normalizar_url_bd  # noqa: E402
 target_metadata = Base.metadata
 
 DATABASE_URL = os.getenv("DATABASE_URL")
 if not DATABASE_URL:
     raise RuntimeError("Falta DATABASE_URL para ejecutar las migraciones de Alembic.")
+DATABASE_URL = normalizar_url_bd(DATABASE_URL)
 
 
 def run_migrations_offline() -> None:

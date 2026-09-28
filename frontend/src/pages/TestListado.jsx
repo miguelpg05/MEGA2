@@ -7,7 +7,8 @@ export default function TestListado() {
   const navigate = useNavigate();
   const location = useLocation();
 
-  const temaIdSeleccionado = location.state?.temaId || 1;
+  const temaIdSeleccionado = location.state?.temaId || null;
+  const temaNombre = location.state?.temaNombre || '';
 
   const [listadoTests, setListadoTests] = useState([]);
   const [cargando, setCargando] = useState(true);
@@ -32,8 +33,13 @@ export default function TestListado() {
   }, [temaIdSeleccionado]);
 
   useEffect(() => {
+    // Sin tema elegido (acceso directo a la URL) volvemos al inicio
+    if (!temaIdSeleccionado) {
+      navigate('/');
+      return;
+    }
     cargarListado();
-  }, [cargarListado]);
+  }, [temaIdSeleccionado, navigate, cargarListado]);
 
   const reintentar = () => {
     setCargando(true);
@@ -70,10 +76,11 @@ export default function TestListado() {
 
         <header className="mb-6 flex flex-wrap justify-between items-center gap-3">
           <div>
-            <h1 className="text-xl sm:text-2xl font-bold text-gray-800">
-              Banco de Tests {temaIdSeleccionado === 1 ? '(Tema 1)' : '(Tema 2)'}
-            </h1>
-            <p className="text-gray-500 text-sm mt-1">Tests de 10 preguntas. Controla tu progreso.</p>
+            <h1 className="text-xl sm:text-2xl font-bold text-gray-800">Banco de Tests</h1>
+            <p className="text-gray-500 text-sm mt-1">
+              {temaNombre ? <><strong className="text-gray-700">{temaNombre}</strong> · </> : null}
+              Elige un test y hazlo en Modo Práctica o Modo Examen.
+            </p>
           </div>
           <button
             onClick={() => navigate('/')}
@@ -83,7 +90,11 @@ export default function TestListado() {
           </button>
         </header>
 
-        <table className="w-full text-left border-collapse min-w-[420px]">
+        {listadoTests.length === 0 && (
+          <p className="text-center text-gray-400 py-10">Todavía no hay tests en este tema.</p>
+        )}
+
+        {listadoTests.length > 0 && <table className="w-full text-left border-collapse min-w-[420px]">
           {/* Cabecera Naranja */}
           <thead className="text-white uppercase text-xs font-bold tracking-wider bg-orange-500">
             <tr>
@@ -100,8 +111,13 @@ export default function TestListado() {
                 key={test.test_id} 
                 className={`border-b border-gray-100 ${index % 2 === 0 ? 'bg-[#515254] text-white' : 'bg-white'}`}
               >
-                {/* Tamaños mantenidos tal y como pediste */}
-                <td className="px-4 py-3 font-bold text-lg text-center">{test.numero_test}</td>
+                {/* Nombre del test: admite cualquier texto (puede ser largo) */}
+                <td className={`px-4 py-3 font-bold text-center break-words ${String(test.numero_test).length > 6 ? 'text-sm max-w-[180px]' : 'text-lg'}`}>
+                  {test.numero_test}
+                  {typeof test.num_preguntas === 'number' && (
+                    <span className="block text-[11px] font-normal opacity-60">{test.num_preguntas} preguntas</span>
+                  )}
+                </td>
                 
                 <td className="px-4 py-3 flex items-center justify-center gap-3">
                   <div className={`w-6 h-6 rounded ${obtenerColorIndicador(test.fallos_ultimo)}`}></div>
@@ -113,7 +129,8 @@ export default function TestListado() {
                 
                 <td className="px-4 py-3 text-center">
                   <button 
-                    onClick={() => navigate('/test', { state: { temaId: temaIdSeleccionado, testPlantillaId: test.test_id } })}
+                    onClick={() => navigate('/test', { state: { temaId: temaIdSeleccionado, temaNombre, testPlantillaId: test.test_id, testNombre: test.numero_test } })}
+                    aria-label={`Hacer el test ${test.numero_test}`}
                     className="text-2xl font-bold cursor-pointer hover:text-orange-500 transition-colors"
                   >
                     ›
@@ -122,7 +139,7 @@ export default function TestListado() {
               </tr>
             ))}
           </tbody>
-        </table>
+        </table>}
       </div>
     </div>
   );
