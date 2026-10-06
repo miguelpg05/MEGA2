@@ -31,7 +31,7 @@ backend/
     temas.py              # Temas visibles del usuario (con nº de preguntas) y sus materiales
     admin.py              # Panel admin: CRUD temas/tests/preguntas, importación, métricas, roles, ranking
   seed.py                 # Datos demo (idempotente); se ejecuta a mano, no en el arranque
-  alembic/                # Migraciones 0001–0006 (0006: tests multi-tema + modo en intentos)
+  alembic/                # Migraciones 0001–0007 (0006: tests multi-tema; 0007: sincronización Access)
   inyectar_preguntas.py   # Script para cargar preguntas desde preguntas.xlsx
   services/               # preguntas.py, tests_util.py (nombres/orden de tests), pdf.py, ia.py
   requirements.txt
@@ -131,6 +131,15 @@ Todo el temario cuelga de un **`Curso`**. La tabla intermedia `usuario_cursos` (
 - **Varios cursos**: el Dashboard muestra pestañas de curso si el alumno tiene más de uno (se recuerda el último en `localStorage`).
 - **Driver de BD**: `models.normalizar_url_bd` fuerza `postgresql+psycopg2://` porque SQLAlchemy 2.1 usa psycopg 3 por defecto y no está instalado.
 
+## 5d. Alumnos y matrículas desde el Access de la academia
+
+- **Login de alumnos**: solo con Google (`@academiamega.net`). `/api/auth/registro` y el login con contraseña quedan para profesores y administradores (los alumnos reciben 403). Excepción: cuentas de demo `*.demo@academiamega.net`.
+- **Sincronización** (`routers/access.py`, solo superadmin, pestaña «Alumnos (Access)» del panel): se sube la exportación del Access (.xlsx o .csv con Id, DNI, Nombre, Correo, Cursos; varios cursos en la misma celda separados por «;»). Primero `aplicar=false` (vista previa) y luego `aplicar=true`. La lógica pura está en `services/access_sync.py` (cubierta por `tests/test_access_sync.py`).
+- **Tablas**: `matriculas_access` (correo → curso, existe aunque el alumno no haya entrado nunca) y `sincronizaciones_access` (histórico). `usuarios.gestionado_access` marca a los alumnos cuyos cursos controla el Access.
+- **Reglas**: el Access manda (bajas de curso incluidas; quien desaparece se queda sin cursos pero conserva cuenta e historial). Un alumno con alguna fila errónea conserva además sus cursos anteriores. Profesores/admins y alumnos ajenos al Access (demo) nunca se tocan. El DNI no se guarda.
+- **Al iniciar sesión con Google** `services/matriculas.aplicar_matriculas_usuario` asigna los cursos y el nombre del Access.
+- **Nombres de curso**: se comparan sin tildes ni mayúsculas; deben coincidir con los de la plataforma (si en el futuro no coinciden, añadir una tabla de equivalencias).
+
 ## 6. Convenciones de código
 
 - **Idioma**: dominio y nombres de negocio en español (`Usuario`, `Pregunta`, `sesion_id`). Mantén la coherencia.
@@ -192,6 +201,8 @@ Todo el temario cuelga de un **`Curso`**. La tabla intermedia `usuario_cursos` (
 - Roles, panel `/admin`, CRUD e importación de contenido, métricas, Sentry y uso de Gemini. Pendiente opcional: rediseñar el ranking (hoy inserta una fila por intento con el nombre; considerar agregación por usuario).
 
 **Al desplegar esta fase** (BD de Neon ya existente): ejecutar `alembic upgrade head` para aplicar la migración `0002` (columna `rol` + tabla `ia_llamadas`), y definir `ADMIN_EMAILS` con tu correo para tener el primer administrador.
+
+**Actualización oct. 2026**: aplicar la `0007` (sincronización con el Access). Sin Python local, pegar `sql_neon/0007_sincronizacion_access.sql` en el SQL Editor de Neon.
 
 **Actualización sept. 2026**: al desplegar, ejecutar `alembic upgrade head` para aplicar la `0006` (tests multi-tema y modo en intentos). Es aditiva y copia el tema actual de cada test a la tabla nueva.
 

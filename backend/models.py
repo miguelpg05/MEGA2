@@ -1,6 +1,6 @@
 import os
 from dotenv import load_dotenv
-from sqlalchemy import create_engine, Column, Integer, String, Boolean, ForeignKey, DateTime, Table, LargeBinary
+from sqlalchemy import create_engine, Column, Integer, String, Boolean, ForeignKey, DateTime, Table, LargeBinary, UniqueConstraint, false
 from sqlalchemy.orm import declarative_base, relationship, sessionmaker
 from datetime import datetime
 
@@ -153,6 +153,10 @@ class Usuario(Base):
     # "estudiante" | "admin" (profesor: solo sus cursos) | "superadmin" (jefe: todos los cursos)
     rol = Column(String, nullable=False, default="estudiante")
 
+    # True cuando sus cursos los controla la sincronización con el Access de la
+    # academia: entonces sus matrículas reflejan siempre lo que diga el Access.
+    gestionado_access = Column(Boolean, nullable=False, default=False, server_default=false())
+
     # Cursos que gestiona (si es admin) o en los que está matriculado (si es estudiante)
     cursos = relationship("Curso", secondary=usuario_cursos, backref="usuarios")
 
@@ -205,6 +209,36 @@ class TestIntento(Base):
     modo = Column(String, nullable=True)
     # True si el test lo configuró el propio alumno ("Personaliza tu test")
     personalizado = Column(Boolean, nullable=True, default=False)
+
+# --- SINCRONIZACIÓN CON EL ACCESS DE LA ACADEMIA ---
+
+# Matrículas tal como figuran en el Access (una fila por alumno y curso), indexadas
+# por el correo @academiamega.net. Existen aunque el alumno no haya entrado nunca:
+# al iniciar sesión con Google se le asignan automáticamente estos cursos.
+class MatriculaAccess(Base):
+    __tablename__ = "matriculas_access"
+    __table_args__ = (UniqueConstraint("email", "curso_id", name="uq_matricula_access_email_curso"),)
+
+    id = Column(Integer, primary_key=True, index=True)
+    email = Column(String, nullable=False, index=True)      # siempre en minúsculas
+    curso_id = Column(Integer, ForeignKey("cursos.id", ondelete="CASCADE"), nullable=False, index=True)
+    access_id = Column(String, nullable=True)                # nº de alumno en el Access
+    nombre = Column(String, nullable=True)
+    fecha_sync = Column(DateTime, default=datetime.utcnow)
+
+# Histórico de sincronizaciones (quién, cuándo y qué cambió)
+class SincronizacionAccess(Base):
+    __tablename__ = "sincronizaciones_access"
+
+    id = Column(Integer, primary_key=True, index=True)
+    fecha = Column(DateTime, default=datetime.utcnow, index=True)
+    usuario_id = Column(Integer, nullable=True)
+    archivo = Column(String, nullable=True)
+    alumnos = Column(Integer, default=0)
+    matriculas = Column(Integer, default=0)
+    altas = Column(Integer, default=0)
+    bajas = Column(Integer, default=0)
+    errores = Column(Integer, default=0)
 
 # 3. Registro de llamadas a la IA (Gemini) para dar visibilidad de uso y coste
 class IALlamada(Base):

@@ -134,10 +134,10 @@ export default function Auth() {
         <div className="text-center mb-8">
           <div className="text-5xl mb-4">🏛️</div>
           <h2 className="text-2xl font-bold text-gray-800">
-            {esLogin ? 'Bienvenido a tu Academia' : 'Comienza tu preparación'}
+            {esLogin ? 'Bienvenido a tu Academia' : 'Alta de profesorado'}
           </h2>
           <p className="text-gray-500 mt-2">
-            {esLogin ? 'Accede con tu cuenta de la academia' : 'Crea tu cuenta con tu correo de la academia'}
+            {esLogin ? 'Accede con tu cuenta de la academia' : 'Solo para profesores y administradores autorizados por la academia'}
           </p>
         </div>
 
@@ -159,10 +159,13 @@ export default function Auth() {
               </svg>
               {cargando ? 'Entrando…' : 'Continuar con Google'}
             </button>
+            <p className="text-center text-xs text-gray-500 mt-3">
+              <strong>Alumnos:</strong> entrad siempre con vuestra cuenta de Google @academiamega.net
+            </p>
 
             <div className="flex items-center gap-3 my-6">
               <div className="flex-1 h-px bg-gray-200"></div>
-              <span className="text-xs text-gray-400 uppercase tracking-wide">o con tu email</span>
+              <span className="text-xs text-gray-400 uppercase tracking-wide">Profesorado: con email y contraseña</span>
               <div className="flex-1 h-px bg-gray-200"></div>
             </div>
           </>
@@ -175,7 +178,7 @@ export default function Auth() {
               <input
                 type="text" name="nombre" required={!esLogin}
                 className="w-full px-4 py-3 rounded-xl bg-gray-50 border border-gray-200 focus:bg-white focus:ring-2 focus:ring-orange-500 outline-none transition-all"
-                placeholder="Ej: Opositor123"
+                placeholder="Tu nombre"
                 value={formData.nombre}
                 onChange={handleChange}
               />
@@ -218,7 +221,7 @@ export default function Auth() {
         </p>
 
         <div className="mt-4 text-center text-sm text-gray-500">
-          {esLogin ? '¿No tienes cuenta? ' : '¿Ya tienes cuenta? '}
+          {esLogin ? '¿Eres profesor y aún no tienes contraseña? ' : '¿Ya tienes cuenta? '}
           <button
             onClick={() => { setEsLogin(!esLogin); setError(''); setMensaje(''); }}
             className="text-orange-600 font-bold hover:underline"

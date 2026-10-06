@@ -3,6 +3,7 @@ import { useNavigate } from 'react-router-dom';
 import { apiJson } from '../api';
 import { Cargando, MensajeError } from '../components/Estado';
 import { useAuth } from '../auth/AuthContext';
+import SincronizacionAccess from '../components/SincronizacionAccess';
 
 // Etiquetas legibles de los roles
 const ETIQUETA_ROL = {
@@ -821,6 +822,8 @@ function UsuariosSection() {
       <p className="text-sm text-gray-500">
         Los cursos son los que un <strong>administrador</strong> gestiona, o en los que un <strong>estudiante</strong> está matriculado.
         El <strong>superadministrador</strong> accede a todos sin asignación.
+        Los alumnos marcados como <strong>Access</strong> reciben sus cursos de la sincronización: un cambio manual aquí se
+        sustituirá en la siguiente sincronización o cuando vuelvan a entrar.
       </p>
       {aviso && <p className="text-sm text-red-600">{aviso}</p>}
 
@@ -828,7 +831,10 @@ function UsuariosSection() {
         {usuarios.map((u) => (
           <div key={u.id} className="p-4 flex flex-col lg:flex-row lg:items-center gap-3">
             <div className="min-w-0 flex-1">
-              <p className="font-medium text-gray-800 truncate">{u.nombre}</p>
+              <p className="font-medium text-gray-800 truncate">
+                {u.nombre}
+                {u.gestionado_access && <span className="ml-2 text-[11px] font-semibold text-orange-700 bg-orange-50 px-2 py-0.5 rounded-full" title="Sus cursos los controla la sincronización con el Access">Access</span>}
+              </p>
               <p className="text-xs text-gray-400 truncate">{u.email}</p>
             </div>
 
@@ -898,7 +904,7 @@ export default function Admin() {
   const esSuperadmin = usuario?.rol === 'superadmin';
 
   const tabs = esSuperadmin
-    ? ['Métricas', 'Cursos', 'Temas', 'Tests', 'Usuarios', 'Ranking']
+    ? ['Métricas', 'Cursos', 'Temas', 'Tests', 'Usuarios', 'Alumnos (Access)', 'Ranking']
     : ['Métricas', 'Temas', 'Tests', 'Ranking'];
   const [tab, setTab] = useState('Métricas');
 
@@ -940,6 +946,7 @@ export default function Admin() {
         {tab === 'Temas' && <TemasSection />}
         {tab === 'Tests' && <TestsSection />}
         {tab === 'Usuarios' && esSuperadmin && <UsuariosSection />}
+        {tab === 'Alumnos (Access)' && esSuperadmin && <SincronizacionAccess />}
         {tab === 'Ranking' && <RankingSection esSuperadmin={esSuperadmin} />}
       </div>
     </div>

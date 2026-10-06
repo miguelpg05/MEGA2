@@ -9,7 +9,7 @@ from sqlalchemy.orm import Session
 
 # Modelos, routers y utilidades
 from models import get_db, Pregunta, Puntuacion, RegistroFallo, Usuario, IALlamada, Tema, MaterialTema
-from routers import progreso, auth, progreso_test, admin, temas
+from routers import progreso, auth, progreso_test, admin, temas, access
 from routers.auth import get_current_user, es_superadmin
 from schemas import (
     FalloRequest,
@@ -101,6 +101,7 @@ app.include_router(auth.router)
 app.include_router(progreso_test.router)
 app.include_router(admin.router)
 app.include_router(temas.router)
+app.include_router(access.router)
 
 # ==========================================
 # 4. RUTAS DE LA API

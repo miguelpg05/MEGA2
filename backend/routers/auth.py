@@ -16,6 +16,8 @@ from datetime import datetime, timedelta
 from models import get_db, Usuario
 from schemas import UsuarioRegistro, UsuarioLogin, GoogleLogin, Token, UsuarioActual
 
+from services.matriculas import aplicar_matriculas_usuario
+
 router = APIRouter(prefix="/api/auth", tags=["Autenticación"])
 
 # Configuración de Seguridad
@@ -154,10 +156,22 @@ def _validar_dominio_academia(email: str):
 #   2) Google (OAuth2 con selector de cuenta forzado; el backend valida el access_token).
 # El rol (alumno/profesor/admin) se asigna/promociona según ADMIN_EMAILS/PROFESOR_EMAILS.
 
-# ENDPOINT: REGISTRO con email + contraseña (solo dominio de la academia)
+# Los alumnos entran SIEMPRE con Google. El acceso con contraseña queda para
+# profesores y administradores (y para las cuentas de demostración *.demo@…).
+MENSAJE_ALUMNOS_GOOGLE = "Los alumnos acceden con «Continuar con Google» usando su cuenta de la academia."
+
+def _es_cuenta_demo(email: str) -> bool:
+    return (email or "").lower().endswith(".demo@" + DOMINIO_PERMITIDO.lower())
+
+# ENDPOINT: REGISTRO con email + contraseña (solo profesores y administradores)
 @router.post("/registro")
 def registrar_usuario(usuario: UsuarioRegistro, db: Session = Depends(get_db)):
     _validar_dominio_academia(usuario.email)
+    if _rol_por_entorno(usuario.email) == ROL_ESTUDIANTE:
+        raise HTTPException(
+            status_code=403,
+            detail="El registro con contraseña es solo para profesores y administradores. " + MENSAJE_ALUMNOS_GOOGLE,
+        )
 
     if len(usuario.password) < 6:
         raise HTTPException(status_code=400, detail="La contraseña debe tener al menos 6 caracteres.")
@@ -188,6 +202,8 @@ def iniciar_sesion(usuario: UsuarioLogin, db: Session = Depends(get_db)):
         raise HTTPException(status_code=400, detail="Email o contraseña incorrectos")
 
     _aplicar_promocion_rol(db_user)  # por si el email entró en ADMIN_EMAILS tras registrarse
+    if db_user.rol == ROL_ESTUDIANTE and not _es_cuenta_demo(db_user.email):
+        raise HTTPException(status_code=403, detail=MENSAJE_ALUMNOS_GOOGLE)
     sesion_id = _crear_sesion(db, db_user)
     token_sesion = create_access_token(db_user.id, sesion_id)
 
@@ -263,6 +279,10 @@ def iniciar_sesion_google(datos: GoogleLogin, db: Session = Depends(get_db)):
         if not db_user.google_sub and google_sub:
             db_user.google_sub = google_sub
         _aplicar_promocion_rol(db_user)  # nunca degrada un rol asignado desde el panel
+        db.commit()
+
+    # Cursos según el Access de la academia (solo alumnos gestionados por la sincronización)
+    if aplicar_matriculas_usuario(db, db_user):
         db.commit()
 
     sesion_id = _crear_sesion(db, db_user)

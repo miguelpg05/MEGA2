@@ -247,11 +247,17 @@ export default function Dashboard() {
             ) : temas.length === 0 ? (
               <div className="p-8 bg-white border border-gray-200 rounded-2xl shadow-sm text-center">
                 <div className="text-4xl mb-3">📚</div>
-                <p className="text-gray-600 font-medium">Todavía no hay temas disponibles.</p>
+                <p className="text-gray-600 font-medium">
+                  {!esStaff && (usuario?.cursos || []).length === 0
+                    ? 'Tu cuenta aún no tiene cursos asignados.'
+                    : 'Todavía no hay temas disponibles.'}
+                </p>
                 <p className="text-gray-400 text-sm mt-1">
                   {esStaff
                     ? 'Créalos desde el Panel admin y aparecerán aquí automáticamente.'
-                    : 'Tu academia aún no ha publicado temario para tus cursos.'}
+                    : (usuario?.cursos || []).length === 0
+                      ? 'Si estás matriculado en la academia, contacta con secretaría para que revisen tu matrícula.'
+                      : 'Tu academia aún no ha publicado temario para tus cursos.'}
                 </p>
               </div>
             ) : (

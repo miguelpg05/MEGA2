@@ -747,6 +747,7 @@ def listar_usuarios(_: Usuario = Depends(require_superadmin), db: Session = Depe
             "nombre": u.nombre,
             "email": u.email,
             "rol": u.rol,
+            "gestionado_access": bool(u.gestionado_access),
             "cursos": [{"id": c.id, "nombre": c.nombre} for c in u.cursos],
         }
         for u in db.query(Usuario).order_by(Usuario.id).all()
