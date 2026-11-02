@@ -10,7 +10,7 @@ from sqlalchemy import create_engine  # noqa: E402
 from sqlalchemy.orm import sessionmaker  # noqa: E402
 from sqlalchemy.pool import StaticPool  # noqa: E402
 
-from services.access_sync import interpretar_filas, leer_archivo, normalizar, planificar  # noqa: E402
+from services.access_sync import correo_desde_access, interpretar_filas, leer_archivo, normalizar, planificar  # noqa: E402
 
 CURSOS = {normalizar("Policía Nacional – Escala Básica"): 1, normalizar("Guardia Civil"): 2, normalizar("Auxiliar Administrativo"): 3}
 
@@ -45,6 +45,36 @@ def test_errores_correo_ajeno_curso_desconocido_y_columna_ausente():
     assert alumnos["b@academiamega.net"].cursos == {2} and alumnos["b@academiamega.net"].con_errores
     with pytest.raises(ValueError):
         interpretar_filas([{"Nombre": "X", "Cursos": "Guardia Civil"}], CURSOS)
+
+
+def test_correo_calculado_igual_que_el_access():
+    assert correo_desde_access("Ana", 6351) == "ana6351@academiamega.net"
+    assert correo_desde_access("María José", 12) == "mariajose12@academiamega.net"
+    assert correo_desde_access("Begoña", 7) == "begonya7@academiamega.net"
+    assert correo_desde_access("ÁNGEL", 3) == "angel3@academiamega.net"
+    assert correo_desde_access(" Íñigo ", 6351.0) == "inyigo6351@academiamega.net"  # Id leído de Excel como float
+
+
+def test_sin_columna_correo_se_calcula_desde_nombre_e_id():
+    filas = [
+        {"Id": 6351.0, "DNI": "1X", "Nombre": "Ana", "Apellidos": "García López", "Cursos": "Guardia Civil"},
+        {"Id": 12, "DNI": "2Y", "Nombre": "María José", "Apellidos": "Núñez", "Cursos": "Guardia Civil; Auxiliar Administrativo"},
+        {"Id": 13, "DNI": "3Z", "Nombre": "Raúl", "Apellidos": "Peña", "Cursos": "Guardia Civil", "Correo": ""},
+        {"Id": 14, "DNI": "4W", "Nombre": "Noël", "Apellidos": "Ruiz", "Cursos": "Guardia Civil"},   # ë no la quita el Access
+        {"Id": "", "DNI": "5V", "Nombre": "Sin Id", "Apellidos": "", "Cursos": "Guardia Civil"},
+    ]
+    alumnos, errores, _ = interpretar_filas(filas, CURSOS)
+    assert set(alumnos) == {"ana6351@academiamega.net", "mariajose12@academiamega.net", "raul13@academiamega.net"}
+    assert alumnos["ana6351@academiamega.net"].nombre == "Ana García López"   # nombre visible con apellidos
+    assert alumnos["mariajose12@academiamega.net"].cursos == {2, 3}
+    assert len(errores) == 2 and "noël14" in errores[0] and "Id" in errores[1]
+
+
+def test_correo_explicito_tiene_prioridad_sobre_el_calculado():
+    filas = [{"Id": 5, "Nombre": "Ana", "Correo": "ana.real@academiamega.net", "Cursos": "Guardia Civil"},
+             {"Id": 6, "Nombre": "Luis", "Correo": "", "Cursos": "Guardia Civil"}]
+    alumnos, errores, _ = interpretar_filas(filas, CURSOS)
+    assert errores == [] and set(alumnos) == {"ana.real@academiamega.net", "luis6@academiamega.net"}
 
 
 def test_planificar_altas_bajas_y_proteccion_ante_errores():
@@ -192,4 +222,5 @@ def test_plantilla_excel(entorno):
     r = cliente.get("/api/admin/access/plantilla", headers=token("jefe@academiamega.net"))
     assert r.status_code == 200 and r.content[:2] == b"PK"
     filas = leer_archivo("p.xlsx", r.content)
-    assert set(filas[0].keys()) == {"Id", "DNI", "Nombre", "Correo", "Cursos"}
+    assert set(filas[0].keys()) == {"Id", "DNI", "Nombre", "Apellidos", "Cursos"}
+    assert filas[0]["Id"] == 6351 and filas[0]["Nombre"] == "Ana"

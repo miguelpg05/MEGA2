@@ -153,7 +153,7 @@ export default function SincronizacionAccess() {
       <div className="bg-white border border-gray-100 rounded-2xl p-5 shadow-sm space-y-4">
         <h3 className="font-semibold text-gray-800">Sincronizar con una nueva exportación</h3>
         <ol className="text-sm text-gray-600 list-decimal pl-5 space-y-1">
-          <li>Exporta desde el Access un Excel (.xlsx) o CSV con las columnas <strong>Id, DNI, Nombre, Correo y Cursos</strong>.</li>
+          <li>Exporta desde el Access un Excel (.xlsx) o CSV con las columnas <strong>Id, DNI, Nombre, Apellidos y Cursos</strong>. El correo de cada alumno se calcula solo, igual que en el Access: nombre en minúsculas, sin espacios ni tildes (ñ → ny) seguido del Id (p. ej. Ana + 6351 → ana6351@academiamega.net). Si el archivo trae una columna <strong>Correo</strong>, se usa esa.</li>
           <li>En <strong>Cursos</strong>, si un alumno tiene varios, sepáralos con punto y coma. Los nombres deben coincidir con los de la plataforma.</li>
           <li>Pulsa <strong>Revisar cambios</strong>: verás qué se va a modificar <em>sin aplicar nada todavía</em>.</li>
           <li>Si todo está bien, pulsa <strong>Aplicar sincronización</strong>.</li>

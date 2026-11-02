@@ -7,8 +7,10 @@ Funciones puras (sin base de datos) para poder probarlas a fondo:
 - `planificar(...)`                   -> qué matrículas se dan de alta y de baja.
 
 Formato esperado (los nombres de columna se reconocen con flexibilidad):
-    Id | DNI | Nombre | Correo | Cursos
-- Correo: la cuenta @academiamega.net del alumno (la que usa con Google).
+    Id | DNI | Nombre | Apellidos | [Correo] | Cursos
+- Correo (opcional): la cuenta @academiamega.net del alumno. Si no viene, se calcula
+  igual que el Access: nombre en minúsculas sin espacios ni tildes (ñ -> ny) + Id.
+  Ej.: Nombre «Ana», Id 6351 -> ana6351@academiamega.net.
 - Cursos: uno o varios en la misma celda, separados por «;», «,», «|» o saltos de línea.
 El DNI se ignora a propósito: la plataforma no lo necesita (minimización de datos).
 """
@@ -114,8 +116,27 @@ def _texto(valor) -> str:
     return str(valor).strip()
 
 
+# Misma transformación que el control calculado del formulario del Access:
+#   =Reemplazar(...Reemplazar(Minús([Nombre]);" ";"");"á";"a")...;"ñ";"ny") & [Id] & "@academiamega.net"
+_REEMPLAZOS_ACCESS = (("á", "a"), ("é", "e"), ("í", "i"), ("ó", "o"), ("ú", "u"), ("ñ", "ny"))
+_LOCAL_VALIDO = re.compile(r"[a-z0-9._-]+")
+
+
+def correo_desde_access(nombre, id_alumno, dominio: str = "academiamega.net") -> str:
+    """Replica exactamente la fórmula del Access: nombre en minúsculas, sin espacios,
+    sin tildes (á é í ó ú), ñ -> ny, seguido del Id. Ej.: («Ana», 6351) -> ana6351@academiamega.net"""
+    t = _texto(nombre).lower().replace(" ", "")
+    for a, b in _REEMPLAZOS_ACCESS:
+        t = t.replace(a, b)
+    return f"{t}{_texto(id_alumno)}@{dominio.lower()}"
+
+
 def interpretar_filas(filas, cursos_por_nombre: dict, dominio: str = "academiamega.net"):
     """Agrupa las filas por correo.
+
+    El correo se toma de la columna «Correo» si existe y tiene valor; si no, se
+    calcula a partir de «Nombre» (solo el nombre, sin apellidos) e «Id», igual
+    que hace el formulario del Access (ver `correo_desde_access`).
 
     `cursos_por_nombre`: {nombre normalizado -> id de curso} de la plataforma.
     Devuelve (alumnos: dict email -> AlumnoAccess, errores: list[str], columnas: dict).
@@ -125,27 +146,45 @@ def interpretar_filas(filas, cursos_por_nombre: dict, dominio: str = "academiame
     if not filas:
         raise ValueError("El archivo está vacío.")
     columnas = detectar_columnas(filas[0].keys())
-    faltan = [c for c in ("email", "cursos") if c not in columnas]
+    puede_calcular = "nombre" in columnas and "access_id" in columnas
+    faltan = []
+    if "email" not in columnas and not puede_calcular:
+        faltan.append("«Correo» (o las columnas «Nombre» e «Id» para calcularlo)")
+    if "cursos" not in columnas:
+        faltan.append("«Cursos»")
     if faltan:
-        nombres = {"email": "Correo", "cursos": "Cursos"}
         raise ValueError(
-            "No encuentro la columna " + " ni la columna ".join(f"«{nombres[c]}»" for c in faltan)
+            "No encuentro la columna " + " ni la columna ".join(faltan)
             + ". Columnas del archivo: " + ", ".join(str(k) for k in filas[0].keys())
         )
 
     alumnos, errores = {}, []
     sufijo = "@" + dominio.lower()
     for i, fila in enumerate(filas, start=2):  # fila 1 = encabezados
-        email = _texto(fila.get(columnas["email"])).lower()
+        email = _texto(fila.get(columnas["email"])).lower() if "email" in columnas else ""
         cursos_txt = _texto(fila.get(columnas["cursos"]))
-        nombre = _texto(fila.get(columnas.get("nombre"))) if "nombre" in columnas else ""
+        nombre_pila = _texto(fila.get(columnas.get("nombre"))) if "nombre" in columnas else ""
+        nombre = nombre_pila
         if "apellidos" in columnas:
             nombre = f"{nombre} {_texto(fila.get(columnas['apellidos']))}".strip()
         access_id = _texto(fila.get(columnas.get("access_id"))) if "access_id" in columnas else ""
         etiqueta = nombre or access_id or f"fila {i}"
 
-        if not email and not cursos_txt:
+        if not email and not cursos_txt and not nombre_pila and not access_id:
             continue  # fila vacía
+        if not email and puede_calcular:
+            if not nombre_pila or not access_id:
+                errores.append(f"Fila {i} ({etiqueta}): faltan el Nombre o el Id para calcular el correo.")
+                continue
+            email = correo_desde_access(nombre_pila, access_id, dominio)
+            local = email.split("@")[0]
+            if not _LOCAL_VALIDO.fullmatch(local):
+                errores.append(
+                    f"Fila {i} ({etiqueta}): el correo calculado «{email}» tiene caracteres no válidos "
+                    "(p. ej. ü, apóstrofos o tildes graves). Revisa el correo real del alumno y "
+                    "añádelo en una columna «Correo»."
+                )
+                continue
         if not email:
             errores.append(f"Fila {i} ({etiqueta}): falta el correo.")
             continue

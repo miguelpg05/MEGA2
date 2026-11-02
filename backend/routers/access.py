@@ -143,10 +143,10 @@ def plantilla(_: Usuario = Depends(require_superadmin), db: Session = Depends(ge
     wb = Workbook()
     ws = wb.active
     ws.title = "Alumnos"
-    ws.append(["Id", "DNI", "Nombre", "Correo", "Cursos"])
-    ws.append([1, "", "Nombre Apellido Apellido", f"nombre.apellido@{DOMINIO}", cursos[0]])
+    ws.append(["Id", "DNI", "Nombre", "Apellidos", "Cursos"])
+    ws.append([6351, "", "Ana", "García López", cursos[0]])
     if len(cursos) > 1:
-        ws.append([2, "", "Otra Alumna Ejemplo", f"otra.alumna@{DOMINIO}", f"{cursos[0]}; {cursos[1]}"])
+        ws.append([6352, "", "María José", "Pérez Núñez", f"{cursos[0]}; {cursos[1]}"])
     for c in ws[1]:
         c.font = Font(bold=True, color="FFFFFF")
         c.fill = PatternFill("solid", fgColor="EA580C")
