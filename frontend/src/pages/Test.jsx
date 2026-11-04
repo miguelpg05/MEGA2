@@ -18,7 +18,6 @@ import { Cargando, MensajeError } from '../components/Estado';
 // ------------------------------------------------------------------
 
 const NIVEL_OBJETIVO = 80;
-const TIEMPO_BANCO_SEG = 120; // cronómetro orientativo del banco de tests (comportamiento actual)
 const LETRAS = ['A', 'B', 'C', 'D'];
 
 const MODOS = {
@@ -64,12 +63,12 @@ export default function Test() {
   const config = location.state?.personalizado || null; // test configurado por el alumno
   const esPersonalizado = Boolean(config);
 
-  // Tiempo: los tests personalizados usan el que eligió el alumno (o sin límite)
-  // y al agotarse se entregan solos. El banco mantiene su cronómetro orientativo.
-  const limiteSeg = esPersonalizado
-    ? (config.tiempo_min ? Math.round(config.tiempo_min * 60) : null)
-    : TIEMPO_BANCO_SEG;
-  const tiempoObligatorio = esPersonalizado && limiteSeg !== null;
+  // Tiempo:
+  // - Test personalizado con tiempo elegido -> cuenta atrás y entrega automática al agotarse.
+  // - Sin límite: Modo Práctica no muestra reloj; Modo Examen muestra un cronómetro
+  //   con el tiempo que lleva el alumno haciendo el test.
+  const limiteSeg = esPersonalizado && config.tiempo_min ? Math.round(config.tiempo_min * 60) : null;
+  const tiempoObligatorio = limiteSeg !== null;
 
   // Datos
   const [preguntas, setPreguntas] = useState([]);
@@ -91,6 +90,7 @@ export default function Test() {
   // Tiempo
   const [segundos, setSegundos] = useState(limiteSeg ?? 0); // restante (o transcurrido si no hay límite)
   const [tiempoAgotado, setTiempoAgotado] = useState(false);
+  const [tiempoEmpleado, setTiempoEmpleado] = useState(null); // segundos, al entregar
   const inicioRef = useRef(null);
 
   // Flashcard (Modo Práctica)
@@ -221,6 +221,7 @@ export default function Test() {
     });
 
     if (motivo === 'tiempo') setTiempoAgotado(true);
+    if (inicioRef.current !== null) setTiempoEmpleado(Math.floor((Date.now() - inicioRef.current) / 1000));
     setConfirmarEntrega(false);
     setResultado(res);
     setFase('resultado');
@@ -290,6 +291,7 @@ export default function Test() {
     setResultado(null);
     setFase('jugando');
     setTiempoAgotado(false);
+    setTiempoEmpleado(null);
     setGuardado(false);
     guardadoRef.current = false;
     inicioRef.current = null;
@@ -404,6 +406,9 @@ export default function Test() {
               <p className="mb-4 inline-block text-sm font-medium bg-red-50 text-red-600 px-4 py-1.5 rounded-full">⏱ Se agotó el tiempo: el test se entregó automáticamente</p>
             )}
             <p className="text-sm text-gray-400 uppercase tracking-wide font-semibold">{tituloTest} · {MODOS[modo].titulo}</p>
+            {modo === 'examen' && tiempoEmpleado !== null && (
+              <p className="mt-1 text-sm text-gray-500">⏱ Tiempo empleado: <span className="font-semibold text-gray-700">{formatearTiempo(tiempoEmpleado)}</span></p>
+            )}
             <div className="text-6xl sm:text-7xl font-black mt-4 text-orange-500">
               {resultado.nota.toLocaleString('es-ES', { minimumFractionDigits: 1, maximumFractionDigits: 1 })}
               <span className="text-2xl sm:text-3xl text-gray-300 font-bold"> / 10</span>
@@ -478,6 +483,7 @@ export default function Test() {
   }).length;
   const pendientes = preguntas.length - respondidas;
   const tiempoCritico = limiteSeg !== null && segundos < 30;
+  const mostrarReloj = limiteSeg !== null || modo === 'examen';
 
   return (
     <div className="min-h-screen bg-gray-50 font-sans">
@@ -488,9 +494,14 @@ export default function Test() {
             <button onClick={volver} className="text-gray-400 hover:text-gray-600 transition-colors cursor-pointer font-medium">✕ Salir</button>
             <div className="flex flex-wrap gap-2 items-center">
               <span className="text-xs font-semibold px-3 py-1.5 rounded-full bg-orange-100 text-orange-700">{MODOS[modo].icono} {MODOS[modo].titulo}</span>
-              <span className={`text-sm font-medium px-3 py-1 rounded-full shadow-sm border transition-colors ${tiempoCritico ? 'bg-red-50 text-red-600 border-red-200 animate-pulse' : 'bg-white text-gray-600 border-gray-200'}`}>
-                ⏱ {formatearTiempo(segundos)}{limiteSeg === null && <span className="text-gray-400"> · sin límite</span>}
-              </span>
+              {mostrarReloj && (
+                <span
+                  title={limiteSeg !== null ? 'Tiempo restante' : 'Tiempo que llevas en el test'}
+                  className={`text-sm font-medium px-3 py-1 rounded-full shadow-sm border transition-colors tabular-nums ${tiempoCritico ? 'bg-red-50 text-red-600 border-red-200 animate-pulse' : 'bg-white text-gray-600 border-gray-200'}`}
+                >
+                  ⏱ {formatearTiempo(segundos)}{limiteSeg === null && <span className="text-gray-400"> · transcurrido</span>}
+                </span>
+              )}
               <span className="text-sm font-medium text-gray-500 bg-white px-3 py-1 rounded-full shadow-sm border border-gray-100">
                 {respondidas}/{preguntas.length}
               </span>

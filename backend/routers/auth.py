@@ -157,11 +157,19 @@ def _validar_dominio_academia(email: str):
 # El rol (alumno/profesor/admin) se asigna/promociona según ADMIN_EMAILS/PROFESOR_EMAILS.
 
 # Los alumnos entran SIEMPRE con Google. El acceso con contraseña queda para
-# profesores y administradores (y para las cuentas de demostración *.demo@…).
+# profesores y administradores (y para las cuentas de demostración *.demo@… y de prueba).
 MENSAJE_ALUMNOS_GOOGLE = "Los alumnos acceden con «Continuar con Google» usando su cuenta de la academia."
 
 def _es_cuenta_demo(email: str) -> bool:
     return (email or "").lower().endswith(".demo@" + DOMINIO_PERMITIDO.lower())
+
+
+# Cuentas de alumno de prueba que pueden entrar con contraseña (además de las *.demo@…).
+# Configurable con CUENTAS_PRUEBA_EMAILS (emails separados por comas).
+CUENTAS_PRUEBA_EMAILS = _parse_emails(os.getenv("CUENTAS_PRUEBA_EMAILS", "estudiante@academiamega.net"))
+
+def _alumno_puede_usar_contrasena(email: str) -> bool:
+    return _es_cuenta_demo(email) or (email or "").lower() in CUENTAS_PRUEBA_EMAILS
 
 # ENDPOINT: REGISTRO con email + contraseña (solo profesores y administradores)
 @router.post("/registro")
@@ -202,7 +210,7 @@ def iniciar_sesion(usuario: UsuarioLogin, db: Session = Depends(get_db)):
         raise HTTPException(status_code=400, detail="Email o contraseña incorrectos")
 
     _aplicar_promocion_rol(db_user)  # por si el email entró en ADMIN_EMAILS tras registrarse
-    if db_user.rol == ROL_ESTUDIANTE and not _es_cuenta_demo(db_user.email):
+    if db_user.rol == ROL_ESTUDIANTE and not _alumno_puede_usar_contrasena(db_user.email):
         raise HTTPException(status_code=403, detail=MENSAJE_ALUMNOS_GOOGLE)
     sesion_id = _crear_sesion(db, db_user)
     token_sesion = create_access_token(db_user.id, sesion_id)

@@ -119,7 +119,11 @@ def entorno(monkeypatch):
     profe = Usuario(nombre="Profe", email="profe@academiamega.net", rol="admin")
     demo = Usuario(nombre="Demo", email="alumna.demo@academiamega.net", rol="estudiante",
                    hashed_password=auth.get_password_hash("secreto123"))
-    db.add_all([jefe, profe, demo]); db.commit()
+    prueba = Usuario(nombre="Estudiante", email="estudiante@academiamega.net", rol="estudiante",
+                     hashed_password=auth.get_password_hash("secreto123"))
+    normal = Usuario(nombre="Normal", email="normal@academiamega.net", rol="estudiante",
+                     hashed_password=auth.get_password_hash("secreto123"))
+    db.add_all([jefe, profe, demo, prueba, normal]); db.commit()
     db.close()
 
     app.dependency_overrides[models.get_db] = get_db_test
@@ -215,6 +219,9 @@ def test_contrasena_cerrada_para_alumnos(entorno):
     # Login con contraseña: superadmin sí, cuenta demo sí
     assert cliente.post("/api/auth/login", json={"email": "jefe@academiamega.net", "password": "secreto123"}).status_code == 200
     assert cliente.post("/api/auth/login", json={"email": "alumna.demo@academiamega.net", "password": "secreto123"}).status_code == 200
+    # Cuenta de alumno de prueba (CUENTAS_PRUEBA_EMAILS) sí; un alumno cualquiera con contraseña no
+    assert cliente.post("/api/auth/login", json={"email": "estudiante@academiamega.net", "password": "secreto123"}).status_code == 200
+    assert cliente.post("/api/auth/login", json={"email": "normal@academiamega.net", "password": "secreto123"}).status_code == 403
 
 
 def test_plantilla_excel(entorno):

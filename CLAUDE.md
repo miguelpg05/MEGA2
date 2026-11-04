@@ -87,6 +87,7 @@ npm run lint
 - `GOOGLE_HOSTED_DOMAIN` — `academiamega.net`.
 - `ADMIN_EMAILS` — emails (separados por comas) que se promocionan a **`superadmin`** al iniciar sesión. **Bootstrap del primer jefe**: pon tu email aquí.
 - `PROFESOR_EMAILS` — emails que se promocionan a **`admin`** (profesor: solo sus cursos asignados).
+- `CUENTAS_PRUEBA_EMAILS` — alumnos de prueba que pueden entrar con contraseña (por defecto `estudiante@academiamega.net`).
 - `SENTRY_DSN` — opcional; si se define, activa la monitorización de errores con Sentry.
 
 **Frontend** (`frontend/.env`; en Vercel como Environment Variables):
@@ -126,14 +127,14 @@ Todo el temario cuelga de un **`Curso`**. La tabla intermedia `usuario_cursos` (
 
 - **Nombre del test** (`test_plantillas.numero_test`): admite cualquier texto ("001", "Simulacro 3"). Se normaliza con `services/tests_util.normalizar_nombre_test` (un número puro conserva el formato "001") y es único. Los listados usan orden natural (`clave_orden_natural`).
 - **Varios temas por test**: tabla `test_plantilla_temas`. `tema_id` sigue siendo el tema *principal* (por defecto para las preguntas nuevas); usa `TestPlantilla.tema_ids` para obtener todos. Cada pregunta pertenece a uno de los temas del test. Un profesor solo cambia las asignaciones de temas de sus cursos; no puede borrar un test compartido con otros cursos.
-- **Modalidades** (frontend `pages/Test.jsx`, scroll vertical continuo): *Práctica* corrige al marcar (varias correctas → botón Comprobar) y guarda con "Finalizar y guardar nota"; *Examen* no muestra correcciones hasta entregar, entonces muestra nota /10 + corrección completa y guarda automáticamente. Las no respondidas cuentan como fallo.
+- **Modalidades** (frontend `pages/Test.jsx`, scroll vertical continuo): *Práctica* corrige al marcar (varias correctas → botón Comprobar) y guarda con "Finalizar y guardar nota"; *Examen* no muestra correcciones hasta entregar, entonces muestra nota /10 + corrección completa y guarda automáticamente. Las no respondidas cuentan como fallo. **Tiempo**: Práctica no muestra reloj; Examen muestra un cronómetro ascendente (tiempo transcurrido, y «Tiempo empleado» en el resultado). Solo un test personalizado con tiempo elegido usa cuenta atrás y se entrega solo al agotarse (la antigua cuenta atrás fija de 2 min del banco se eliminó en nov. 2026).
 - **Personaliza tu test** (`/personalizar`): temas de un curso + nº de preguntas (máx. 200) + tiempo (o sin límite; si hay límite, al agotarse se entrega solo) + modalidad. Cuenta para progreso, repaso, evolución y ranking. `test_intentos` guarda `total_preguntas`, `modo` y `personalizado` (sin plantilla).
 - **Varios cursos**: el Dashboard muestra pestañas de curso si el alumno tiene más de uno (se recuerda el último en `localStorage`).
 - **Driver de BD**: `models.normalizar_url_bd` fuerza `postgresql+psycopg2://` porque SQLAlchemy 2.1 usa psycopg 3 por defecto y no está instalado.
 
 ## 5d. Alumnos y matrículas desde el Access de la academia
 
-- **Login de alumnos**: solo con Google (`@academiamega.net`). `/api/auth/registro` y el login con contraseña quedan para profesores y administradores (los alumnos reciben 403). Excepción: cuentas de demo `*.demo@academiamega.net`.
+- **Login de alumnos**: solo con Google (`@academiamega.net`). `/api/auth/registro` y el login con contraseña quedan para profesores y administradores (los alumnos reciben 403). Excepciones: cuentas de demo `*.demo@academiamega.net` y las cuentas de prueba de `CUENTAS_PRUEBA_EMAILS` (por defecto `estudiante@academiamega.net`).
 - **Sincronización** (`routers/access.py`, solo superadmin, pestaña «Alumnos (Access)» del panel): se sube la exportación del Access (.xlsx o .csv con Id, DNI, Nombre, Apellidos, Cursos; varios cursos en la misma celda separados por «;»). **Correo**: si no hay columna «Correo» (o viene vacía) se calcula con `access_sync.correo_desde_access`, réplica exacta del control calculado del Access: `Minús([Nombre])` sin espacios, á/é/í/ó/ú → vocal, ñ → ny, + `[Id]` + `@academiamega.net` (Ana, 6351 → ana6351@academiamega.net). `[Nombre]` es solo el nombre de pila; los apellidos van aparte. Si el resultado tiene caracteres raros (ü, à, apóstrofo…) la fila se marca como error. Primero `aplicar=false` (vista previa) y luego `aplicar=true`. La lógica pura está en `services/access_sync.py` (cubierta por `tests/test_access_sync.py`).
 - **Tablas**: `matriculas_access` (correo → curso, existe aunque el alumno no haya entrado nunca) y `sincronizaciones_access` (histórico). `usuarios.gestionado_access` marca a los alumnos cuyos cursos controla el Access.
 - **Reglas**: el Access manda (bajas de curso incluidas; quien desaparece se queda sin cursos pero conserva cuenta e historial). Un alumno con alguna fila errónea conserva además sus cursos anteriores. Profesores/admins y alumnos ajenos al Access (demo) nunca se tocan. El DNI no se guarda.
