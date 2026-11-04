@@ -23,19 +23,48 @@ def _proveedor() -> str:
     return (os.getenv("IA_PROVIDER") or "groq").strip().lower()
 
 
+# Modelo de Groq por defecto. Groq retira modelos cada pocos meses
+# (llama-3.3-70b-versatile se apagó el 16/08/2026): ver
+# https://console.groq.com/docs/deprecations
+MODELO_GROQ_POR_DEFECTO = "openai/gpt-oss-120b"
+MODELOS_GROQ_RETIRADOS = {
+    "llama-3.3-70b-versatile",
+    "llama-3.1-8b-instant",
+    "qwen/qwen3-32b",
+    "meta-llama/llama-4-scout-17b-16e-instruct",
+    "moonshotai/kimi-k2-instruct-0905",
+}
+
+
+def modelo_groq() -> str:
+    """GROQ_MODEL si está definido y sigue activo; si no, el modelo por defecto."""
+    modelo = (os.getenv("GROQ_MODEL") or "").strip()
+    if not modelo or modelo in MODELOS_GROQ_RETIRADOS:
+        return MODELO_GROQ_POR_DEFECTO
+    return modelo
+
+
 def _generar_groq(prompt: str, json_mode: bool, max_tokens):
     api_key = os.getenv("GROQ_API_KEY")
     if not api_key:
         raise IAError("La IA no está configurada en el servidor (falta GROQ_API_KEY).", status=500)
-    modelo = os.getenv("GROQ_MODEL", "llama-3.3-70b-versatile")
+    modelo = modelo_groq()
 
     payload = {
         "model": modelo,
         "messages": [{"role": "user", "content": prompt}],
         "temperature": 0.4,
     }
+    razonador = modelo.startswith("openai/gpt-oss")
+    if razonador:
+        # Modelos que "piensan" antes de responder: razonamiento corto y sin
+        # devolverlo (solo queremos el texto final en `content`).
+        payload["reasoning_effort"] = "low"
+        payload["include_reasoning"] = False
     if max_tokens:
-        payload["max_tokens"] = max_tokens
+        # El razonamiento consume tokens del mismo cupo: dejamos margen para que
+        # no se corte el resumen.
+        payload["max_tokens"] = max_tokens + (2048 if razonador else 0)
     if json_mode:
         payload["response_format"] = {"type": "json_object"}
 
