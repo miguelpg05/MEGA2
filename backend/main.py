@@ -18,7 +18,7 @@ from schemas import (
     RepasoCompletado,
 )
 from services.preguntas import texto_opcion_correcta, textos_correctos
-from services.pdf import extraer_texto_pdf
+from services.pdf import extraer_texto_pdf, recortar_repartido, combinar_materiales
 from services.ia import generar_texto, IAError
 
 # Monitorización de errores con Sentry (opcional: solo si se define SENTRY_DSN)
@@ -124,18 +124,20 @@ def registrar_fallo(datos: FalloRequest, usuario: Usuario = Depends(get_current_
 
 @app.post("/api/ia/resumir")
 def generar_resumen_ia(datos: ResumenRequest, usuario: Usuario = Depends(get_current_user), db: Session = Depends(get_db)):
-    contenido, fuente = _contenido_fuente(datos, usuario, db)
+    # Solo se resume material real (PDFs de la academia o texto aportado): sin él,
+    # la IA escribiría de memoria y en oposiciones eso da datos erróneos.
+    contenido, fuente, documentos, recortado = _contenido_fuente(datos, usuario, db)
 
-    if contenido:
-        base = (
-            f'Elabora un material de estudio DETALLADO a partir del CONTENIDO que te doy '
-            f'(procedente de {fuente}), sobre "{datos.tema}". Cíñete a ese contenido; '
-            f'no inventes datos que no aparezcan, pero desarrolla y explica todo lo que sí aparece.'
-        )
-        bloque_contenido = f"\n\nCONTENIDO:\n{contenido}"
-    else:
-        base = f'Elabora un material de estudio DETALLADO y completo sobre: "{datos.tema}".'
-        bloque_contenido = ""
+    base = (
+        f'Elabora unos apuntes de estudio a partir del CONTENIDO que te doy '
+        f'(procedente de {fuente}), sobre "{datos.tema}". Cíñete ESTRICTAMENTE a ese contenido: '
+        f'no añadas artículos, leyes, fechas ni cifras que no aparezcan en él. '
+        f'Desarrolla y explica todo lo que sí aparece.'
+    )
+    if recortado:
+        base += (' El contenido es una selección de fragmentos del documento (separados por «[…]»): '
+                 'organízalos con coherencia y no rellenes los huecos inventando.')
+    bloque_contenido = f"\n\nCONTENIDO:\n{contenido}"
 
     # La extensión y profundidad escalan con el tiempo disponible...
     guias_tiempo = {
@@ -164,23 +166,27 @@ MUY IMPORTANTE — sé DETALLADO y EXTENSO: no te limites a una lista de titular
 Desarrolla cada punto con 2-4 frases explicativas, define los conceptos, incluye
 datos concretos (artículos, plazos, cifras, nombres), ejemplos y relaciones entre ideas.
 
-Formato en **Markdown** bien estructurado y fácil de memorizar:
-- Frase de contexto inicial.
-- Secciones con encabezados (## Título) y subsecciones (### ) cuando convenga.
-- Párrafos explicativos combinados con listas y **negrita** en los términos clave.
-- Cierra con "### 🔑 Claves para recordar": 5-8 puntos o reglas mnemotécnicas.
+Formato en **Markdown** (se mostrará con estilos, respeta estas reglas):
+- Empieza con UNA frase de contexto (sin título; el título ya lo pone la plataforma).
+- Secciones principales numeradas con «## 1. Título», «## 2. Título»… (entre 3 y 7).
+- Subsecciones con «### Título» (sin numerar).
+- Párrafos cortos (2-4 frases) combinados con listas; **negrita** solo en los términos clave.
+- Cuando cites un artículo o precepto literal, ponlo como cita: «> **Art. 57 CE** — texto…».
+- Usa una tabla Markdown (con fila de cabecera y separador |---|) solo para comparar o clasificar.
+- Cierra SIEMPRE con «## 🔑 Claves para recordar»: 5-8 viñetas breves o reglas mnemotécnicas.
 Escribe en español, claro y didáctico. No añadas comentarios sobre ti mismo ni sobre el formato.{bloque_contenido}
 """
     # Escalamos también el máximo de tokens de salida según el tiempo, para que no
     # se corte un resumen largo.
-    tope_tokens = {5: 1500, 15: 3000, 30: 5000}.get(datos.tiempo, 3000)
+    # (Acotado para no superar el límite por minuto del plan gratuito de Groq.)
+    tope_tokens = {5: 1400, 15: 2200, 30: 3000}.get(datos.tiempo, 2200)
     try:
         texto, tokens = generar_texto(prompt, max_tokens=tope_tokens)
     except IAError as e:
         raise HTTPException(status_code=e.status, detail=e.mensaje)
 
     _registrar_uso_ia(db, usuario.id, "resumen", tokens)
-    return {"resumen": texto, "fuente": fuente}
+    return {"resumen": texto, "fuente": fuente, "documentos": documentos, "recortado": recortado}
 
 @app.post("/api/ranking/guardar")
 def guardar_puntos(datos: PuntosRequest, usuario: Usuario = Depends(get_current_user), db: Session = Depends(get_db)):
@@ -249,12 +255,22 @@ def _tema_accesible_para(usuario: Usuario, tema: Tema) -> bool:
     return tema.curso_id is None or tema.curso_id in [c.id for c in usuario.cursos]
 
 
+# Máximo de texto de los PDFs que se envía a la IA en cada resumen. Con el plan
+# gratuito de Groq (8.000 tokens/minuto) no se puede enviar mucho más: si se pasa a
+# un plan de pago, se puede subir (y también tope_tokens en el resumen).
+TOPE_CONTENIDO_IA = int(os.getenv("IA_TOPE_CARACTERES", "10000"))
+
+SIN_MATERIAL = ("Los temas seleccionados no tienen PDFs con texto. El resumen solo se genera a partir "
+                "del material de la academia: pide que suban el PDF del tema o pega tú el texto.")
+
+
 def _contenido_fuente(datos, usuario: Usuario, db: Session):
-    """Devuelve (texto_fuente, descripcion_fuente) según lo que el usuario haya
-    elegido: texto libre, un PDF del tema, o solo el nombre del tema.
-    Lo usa el resumen de IA (acepta texto/material_id/tema_ids)."""
+    """Devuelve (texto, descripcion_fuente, documentos, recortado) según lo elegido:
+    texto libre, un PDF concreto o los PDFs de varios temas. Si no hay material
+    con texto, lanza 400 (no se resume solo con el título)."""
     if datos.texto and datos.texto.strip():
-        return datos.texto.strip()[:18000], "el texto proporcionado"
+        texto, recortado = recortar_repartido(datos.texto, TOPE_CONTENIDO_IA)
+        return texto, "el texto proporcionado", ["Texto aportado"], recortado
 
     if datos.material_id:
         material = db.query(MaterialTema).filter(MaterialTema.id == datos.material_id).first()
@@ -263,32 +279,24 @@ def _contenido_fuente(datos, usuario: Usuario, db: Session):
         tema = db.query(Tema).filter(Tema.id == material.tema_id).first()
         if not _tema_accesible_para(usuario, tema):
             raise HTTPException(status_code=403, detail="No tienes acceso a este material.")
-        texto = extraer_texto_pdf(material.contenido)
+        texto = extraer_texto_pdf(material.contenido, max_chars=400000)
         if not texto:
             raise HTTPException(status_code=400, detail="No se pudo extraer texto de ese PDF (puede ser escaneado/imagen).")
-        return texto, f"el documento «{material.nombre_archivo}»"
+        texto, recortado = recortar_repartido(texto, TOPE_CONTENIDO_IA)
+        return texto, f"el documento «{material.nombre_archivo}»", [material.nombre_archivo], recortado
 
-    # Varios temas: combinamos el texto de TODOS sus PDFs (con un tope global para
-    # controlar tokens/coste). Si ningún tema tiene material, se resume por título.
-    tema_ids = getattr(datos, "tema_ids", None)
-    if tema_ids:
-        TOPE_TOTAL = 26000
-        partes, total = [], 0
-        for tid in tema_ids:
-            if total >= TOPE_TOTAL:
-                break
-            tema = db.query(Tema).filter(Tema.id == tid).first()
-            if not tema or not _tema_accesible_para(usuario, tema):
-                continue
-            for material in tema.materiales:
-                if total >= TOPE_TOTAL:
-                    break
-                texto_pdf = extraer_texto_pdf(material.contenido, max_chars=min(12000, TOPE_TOTAL - total))
-                if texto_pdf:
-                    partes.append(f"\n\n### {tema.nombre} · {material.nombre_archivo}\n{texto_pdf}")
-                    total += len(texto_pdf)
-        contenido = "".join(partes).strip()
-        if contenido:
-            return contenido, "los materiales de los temas seleccionados"
-
-    return "", "el tema (solo el título)"
+    # Varios temas: se reparte el cupo entre TODOS sus PDFs y, de cada uno, se toman
+    # fragmentos de todo el documento (no solo las primeras páginas).
+    documentos = []
+    for tid in (getattr(datos, "tema_ids", None) or []):
+        tema = db.query(Tema).filter(Tema.id == tid).first()
+        if not tema or not _tema_accesible_para(usuario, tema):
+            continue
+        for material in tema.materiales:
+            texto_pdf = extraer_texto_pdf(material.contenido, max_chars=400000)
+            if texto_pdf:
+                documentos.append((f"{tema.nombre} · {material.nombre_archivo}", texto_pdf))
+    contenido, recortado = combinar_materiales(documentos, TOPE_CONTENIDO_IA)
+    if not contenido:
+        raise HTTPException(status_code=400, detail=SIN_MATERIAL)
+    return contenido, "los PDFs de los temas seleccionados", [e.split(" · ", 1)[-1] for e, _ in documentos], recortado

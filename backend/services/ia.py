@@ -64,7 +64,7 @@ def _generar_groq(prompt: str, json_mode: bool, max_tokens):
     if max_tokens:
         # El razonamiento consume tokens del mismo cupo: dejamos margen para que
         # no se corte el resumen.
-        payload["max_tokens"] = max_tokens + (2048 if razonador else 0)
+        payload["max_tokens"] = max_tokens + (1024 if razonador else 0)
     if json_mode:
         payload["response_format"] = {"type": "json_object"}
 
@@ -91,7 +91,11 @@ def _generar_groq(prompt: str, json_mode: bool, max_tokens):
         except Exception:
             pass
         if e.code == 429:
-            raise IAError("Se ha alcanzado el límite de la IA por ahora. Inténtalo en unos minutos.", status=429)
+            if "per day" in cuerpo or "TPD" in cuerpo or "RPD" in cuerpo:
+                raise IAError("Se ha alcanzado el límite diario de la IA. Vuelve a intentarlo mañana.", status=429)
+            raise IAError("La IA está recibiendo muchas peticiones. Espera un minuto y vuelve a intentarlo.", status=429)
+        if e.code == 413:
+            raise IAError("El material es demasiado largo para la IA. Prueba con menos temas o con un solo PDF.", status=413)
         raise IAError(f"La IA no respondió ({modelo}): {e.code} {cuerpo}", status=502)
     except URLError as e:
         raise IAError(f"No se pudo contactar con la IA: {e}", status=502)
