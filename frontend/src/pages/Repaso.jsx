@@ -63,7 +63,7 @@ export default function Repaso() {
       try {
         await apiFetch('/api/repaso/completar', {
           method: 'POST',
-          body: JSON.stringify({ fallo_id: cartaActual.fallo_id })
+          body: JSON.stringify({ pregunta_id: cartaActual.pregunta_id })
         });
       } catch (error) {
         console.error("Error al marcar como completado:", error);
@@ -143,7 +143,12 @@ export default function Repaso() {
       </div>
 
       <div className="w-full max-w-3xl bg-white rounded-3xl shadow-sm border border-gray-100 p-8 md:p-12">
-        <div className="mb-4 text-sm font-bold text-orange-500 tracking-wide uppercase">Repaso Activo</div>
+        <div className="mb-4 flex flex-wrap items-center gap-2">
+          <span className="text-sm font-bold text-orange-500 tracking-wide uppercase">Repaso Activo</span>
+          {cartaActual.veces > 1 && (
+            <span className="text-xs font-medium bg-red-50 text-red-600 px-2.5 py-0.5 rounded-full">Fallada {cartaActual.veces} veces</span>
+          )}
+        </div>
         <h2 className="text-2xl md:text-3xl font-medium text-gray-800 mb-8 leading-snug">{cartaActual.pregunta}</h2>
 
         <div className="flex flex-col gap-3 mb-8">

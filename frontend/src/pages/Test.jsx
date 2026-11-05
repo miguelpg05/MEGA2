@@ -94,6 +94,9 @@ export default function Test() {
   const [tiempoEmpleado, setTiempoEmpleado] = useState(null); // segundos, al entregar
   const inicioRef = useRef(null);
 
+  // Confirmación antes de salir y perder el intento: null | { titulo, mensaje, confirmar, accion }
+  const [salida, setSalida] = useState(null);
+
   // Flashcard (Modo Práctica)
   const [flashcard, setFlashcard] = useState(null); // pregunta mostrada
   const [flashcardVolteada, setFlashcardVolteada] = useState(false);
@@ -250,6 +253,59 @@ export default function Test() {
 
   // ---------- Cronómetro ----------
   const jugando = !cargando && !error && modo && fase === 'jugando' && preguntas.length > 0;
+  const hayRespuestas = Object.keys(respuestas).length > 0;
+  // Se pierde algo si se sale: test empezado o nota sin guardar
+  const testEnCurso = jugando && hayRespuestas;
+  const notaSinGuardar = fase === 'resultado' && !guardado;
+
+  // Aviso del navegador al recargar o cerrar la pestaña con el test a medias
+  useEffect(() => {
+    if (!testEnCurso && !notaSinGuardar) return undefined;
+    const avisar = (e) => { e.preventDefault(); e.returnValue = ''; };
+    window.addEventListener('beforeunload', avisar);
+    return () => window.removeEventListener('beforeunload', avisar);
+  }, [testEnCurso, notaSinGuardar]);
+
+  const salirDelTest = () => {
+    if (!testEnCurso) { volver(); return; }
+    setSalida({
+      titulo: '¿Salir del test?',
+      mensaje: modo === 'practica'
+        ? 'Si sales ahora no se guardará la nota de este intento. Las preguntas que ya has fallado sí quedan en tu mazo de repaso.'
+        : 'Si sales ahora se perderán tus respuestas y este examen no contará en tu historial.',
+      confirmar: 'Salir sin guardar',
+      accion: volver,
+    });
+  };
+
+  const salirSinNota = (accion) => {
+    if (guardado) { accion(); return; }
+    setSalida({
+      titulo: 'Tu nota no se ha guardado',
+      mensaje: 'Si sales ahora, este intento no contará en tu historial ni en el ranking. Puedes pulsar «Reintentar» para guardarla.',
+      confirmar: 'Salir igualmente',
+      accion,
+    });
+  };
+
+  const modalSalida = salida && (
+    <div className="fixed inset-0 z-50 bg-black/40 flex items-center justify-center p-4" role="dialog" aria-modal="true" aria-labelledby="titulo-salida">
+      <div className="bg-white rounded-3xl p-6 sm:p-8 max-w-md w-full shadow-xl">
+        <h2 id="titulo-salida" className="text-lg font-bold text-gray-800">{salida.titulo}</h2>
+        <p className="text-gray-600 mt-2 text-sm leading-relaxed">{salida.mensaje}</p>
+        <div className="flex flex-col-reverse sm:flex-row gap-3 mt-6">
+          <button onClick={() => setSalida(null)} autoFocus
+            className="flex-1 py-3 bg-orange-500 hover:bg-orange-600 text-white rounded-2xl font-semibold transition-colors cursor-pointer">
+            Seguir en el test
+          </button>
+          <button onClick={() => { const accion = salida.accion; setSalida(null); accion(); }}
+            className="flex-1 py-3 bg-white border border-gray-200 text-gray-600 rounded-2xl font-semibold hover:border-red-300 hover:text-red-600 transition-colors cursor-pointer">
+            {salida.confirmar}
+          </button>
+        </div>
+      </div>
+    </div>
+  );
   useEffect(() => {
     if (!jugando) return;
     if (inicioRef.current === null) inicioRef.current = Date.now();
@@ -421,6 +477,7 @@ export default function Test() {
     const superado = resultado.porcentaje >= NIVEL_OBJETIVO;
     return (
       <div className="min-h-screen bg-gray-50 py-8 sm:py-12 px-4 font-sans">
+        {modalSalida}
         <div className="max-w-3xl mx-auto space-y-6">
           <div className="bg-white rounded-3xl p-6 sm:p-8 shadow-sm border border-gray-100 text-center">
             {tiempoAgotado && (
@@ -453,10 +510,10 @@ export default function Test() {
               </p>
             )}
             <div className="flex flex-col sm:flex-row gap-3 mt-6">
-              <button onClick={volver} className="flex-1 py-3 bg-gray-900 text-white rounded-2xl font-semibold hover:bg-gray-800 transition-colors cursor-pointer">
+              <button onClick={() => salirSinNota(volver)} className="flex-1 py-3 bg-gray-900 text-white rounded-2xl font-semibold hover:bg-gray-800 transition-colors cursor-pointer">
                 {esPersonalizado ? 'Volver al inicio' : 'Volver al banco de tests'}
               </button>
-              <button onClick={reiniciar} className="flex-1 py-3 bg-white border border-gray-200 text-gray-700 rounded-2xl font-semibold hover:border-orange-500 hover:text-orange-600 transition-colors cursor-pointer">
+              <button onClick={() => salirSinNota(reiniciar)} className="flex-1 py-3 bg-white border border-gray-200 text-gray-700 rounded-2xl font-semibold hover:border-orange-500 hover:text-orange-600 transition-colors cursor-pointer">
                 Repetir test
               </button>
             </div>
@@ -512,11 +569,12 @@ export default function Test() {
 
   return (
     <div className="min-h-screen bg-gray-50 font-sans">
+      {modalSalida}
       {/* Cabecera fija: salir, modo, tiempo, progreso y mapa de preguntas */}
       <div className="sticky top-0 z-30 bg-gray-50/95 backdrop-blur border-b border-gray-200">
         <div className="max-w-3xl mx-auto px-4 py-3">
           <div className="flex flex-wrap justify-between items-center gap-2">
-            <button onClick={volver} className="text-gray-400 hover:text-gray-600 transition-colors cursor-pointer font-medium">✕ Salir</button>
+            <button onClick={salirDelTest} className="text-gray-400 hover:text-gray-600 transition-colors cursor-pointer font-medium">✕ Salir</button>
             <div className="flex flex-wrap gap-2 items-center">
               <span className="text-xs font-semibold px-3 py-1.5 rounded-full bg-orange-100 text-orange-700">{MODOS[modo].icono} {MODOS[modo].titulo}</span>
               {mostrarReloj && (

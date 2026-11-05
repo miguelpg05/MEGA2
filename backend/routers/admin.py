@@ -28,7 +28,6 @@ from models import (
     RespuestaAlumno,
     TestIntento,
     IALlamada,
-    Puntuacion,
 )
 from schemas import CursoIn, CursosUsuarioUpdate, TemaIn, TestPlantillaIn, PreguntaIn, RolUpdate
 from routers.auth import (
@@ -43,10 +42,6 @@ from services.preguntas import normalizar_respuesta, letras_correctas
 from services.tests_util import normalizar_nombre_test, clave_orden_natural
 
 router = APIRouter(prefix="/api/admin", tags=["Administración"])
-
-# Nombres de los usuarios de demostración que la versión antigua inyectaba en el ranking.
-NOMBRES_DEMO = ["Marta V.", "Carlos M.", "Lucía Gómez", "Javier R.", "Ana Ruiz"]
-
 
 # ==========================================
 # HELPERS DE ALCANCE
@@ -720,20 +715,8 @@ def obtener_metricas(usuario: Usuario = Depends(require_gestor), db: Session = D
     }
 
 
-# ==========================================
-# RANKING: limpieza
-# ==========================================
-@router.delete("/ranking/demo")
-def limpiar_ranking_demo(_: Usuario = Depends(require_gestor), db: Session = Depends(get_db)):
-    borradas = db.query(Puntuacion).filter(Puntuacion.alumno_nombre.in_(NOMBRES_DEMO)).delete(synchronize_session=False)
-    db.commit()
-    return {"mensaje": f"Eliminadas {borradas} puntuaciones de demostración."}
-
-@router.delete("/ranking/reset")
-def reset_ranking(_: Usuario = Depends(require_superadmin), db: Session = Depends(get_db)):
-    borradas = db.query(Puntuacion).delete(synchronize_session=False)
-    db.commit()
-    return {"mensaje": f"Ranking reiniciado. Eliminadas {borradas} puntuaciones."}
+# (El ranking ya no se guarda aparte: se calcula a partir de los intentos de los
+#  tests del banco, ver routers/ranking.py. Por eso no hay herramientas de limpieza.)
 
 
 # ==========================================

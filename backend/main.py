@@ -8,8 +8,8 @@ from fastapi.responses import JSONResponse
 from sqlalchemy.orm import Session
 
 # Modelos, routers y utilidades
-from models import get_db, Pregunta, Puntuacion, RegistroFallo, Usuario, IALlamada, Tema, MaterialTema
-from routers import progreso, auth, progreso_test, admin, temas, access
+from models import get_db, Pregunta, RegistroFallo, Usuario, IALlamada, Tema, MaterialTema
+from routers import progreso, auth, progreso_test, admin, temas, access, ranking
 from routers.auth import get_current_user, es_superadmin
 from schemas import (
     FalloRequest,
@@ -19,6 +19,8 @@ from schemas import (
 from services.preguntas import texto_opcion_correcta, textos_correctos
 from services.pdf import extraer_texto_pdf, recortar_repartido, combinar_materiales
 from services.ia import generar_texto, IAError
+from services.limites import limiter, respuesta_limite_superado, clave_usuario, LIMITE_IA
+from slowapi.errors import RateLimitExceeded
 
 # Monitorización de errores con Sentry (opcional: solo si se define SENTRY_DSN)
 SENTRY_DSN = os.getenv("SENTRY_DSN")
@@ -57,6 +59,10 @@ async def lifespan(app: FastAPI):
 # 2. INICIALIZACIÓN DE LA APP Y CORS
 # ==========================================
 app = FastAPI(title="API Academia Oposiciones", lifespan=lifespan)
+
+# Límites de peticiones (login, registro, Google e IA): ver services/limites.py
+app.state.limiter = limiter
+app.add_exception_handler(RateLimitExceeded, respuesta_limite_superado)
 
 
 # IMPORTANTE: este middleware se añade ANTES que el de CORS para que quede por
@@ -101,6 +107,7 @@ app.include_router(progreso_test.router)
 app.include_router(admin.router)
 app.include_router(temas.router)
 app.include_router(access.router)
+app.include_router(ranking.router)
 
 # ==========================================
 # 4. RUTAS DE LA API
@@ -130,7 +137,8 @@ def registrar_fallo(datos: FalloRequest, usuario: Usuario = Depends(get_current_
     return {"mensaje": "Fallo guardado en el historial para el repaso automático"}
 
 @app.post("/api/ia/resumir")
-def generar_resumen_ia(datos: ResumenRequest, usuario: Usuario = Depends(get_current_user), db: Session = Depends(get_db)):
+@limiter.limit(LIMITE_IA, key_func=clave_usuario)
+def generar_resumen_ia(request: Request, datos: ResumenRequest, usuario: Usuario = Depends(get_current_user), db: Session = Depends(get_db)):
     # Solo se resume material real (PDFs de la academia o texto aportado): sin él,
     # la IA escribiría de memoria y en oposiciones eso da datos erróneos.
     contenido, fuente, documentos, recortado = _contenido_fuente(datos, usuario, db)
@@ -197,47 +205,55 @@ Escribe en español, claro y didáctico. No añadas comentarios sobre ti mismo n
 
 # Los puntos del ranking los suma el servidor al corregir (POST /api/test/entregar).
 
-@app.get("/api/ranking/clase")
-def obtener_ranking(db: Session = Depends(get_db)):
-    # Solo el ranking acumulativo por usuario (ignora filas antiguas sin usuario_id)
-    return (
-        db.query(Puntuacion)
-        .filter(Puntuacion.usuario_id.isnot(None))
-        .order_by(Puntuacion.puntos.desc())
-        .limit(5)
-        .all()
-    )
+# Ranking por curso: routers/ranking.py (GET /api/ranking/clase?curso_id=…)
 
 @app.get("/api/repaso/pendientes")
 def obtener_repasos(usuario: Usuario = Depends(get_current_user), db: Session = Depends(get_db)):
-    fallos = db.query(RegistroFallo).filter(
-        RegistroFallo.alumno_id == usuario.id,
-        RegistroFallo.repasada == False
-    ).all()
-
-    preguntas_repaso = []
-    for fallo in fallos:
-        p = db.query(Pregunta).filter(Pregunta.id == fallo.pregunta_id).first()
-        if p:
-            opciones = [opt for opt in [p.opcion_a, p.opcion_b, p.opcion_c, p.opcion_d] if opt]
-            correctas = textos_correctos(p)
-            preguntas_repaso.append({
-                "fallo_id": fallo.id,
-                "pregunta": p.enunciado,
-                "opciones": opciones,
-                "respuestaCorrecta": texto_opcion_correcta(p),   # compatibilidad
-                "respuestasCorrectas": correctas,
-                "multiple": len(correctas) > 1,
-                "explicacion": p.explicacion or "Sin explicación."
-            })
-    return preguntas_repaso
+    """Mazo de repaso: UNA carta por pregunta pendiente (aunque se fallara varias
+    veces), en una sola consulta. `veces` = cuántos fallos pendientes tiene."""
+    filas = (
+        db.query(RegistroFallo.id, Pregunta)
+        .join(Pregunta, Pregunta.id == RegistroFallo.pregunta_id)
+        .filter(RegistroFallo.alumno_id == usuario.id, RegistroFallo.repasada == False)  # noqa: E712
+        .order_by(RegistroFallo.id)
+        .all()
+    )
+    cartas = {}
+    for fallo_id, p in filas:
+        if p.id in cartas:
+            cartas[p.id]["veces"] += 1
+            continue
+        correctas = textos_correctos(p)
+        cartas[p.id] = {
+            "pregunta_id": p.id,
+            "fallo_id": fallo_id,   # compatibilidad
+            "veces": 1,
+            "pregunta": p.enunciado,
+            "opciones": [opt for opt in [p.opcion_a, p.opcion_b, p.opcion_c, p.opcion_d] if opt],
+            "respuestaCorrecta": texto_opcion_correcta(p),   # compatibilidad
+            "respuestasCorrectas": correctas,
+            "multiple": len(correctas) > 1,
+            "explicacion": p.explicacion or "Sin explicación.",
+        }
+    return list(cartas.values())
 
 @app.post("/api/repaso/completar")
 def completar_repaso(datos: RepasoCompletado, usuario: Usuario = Depends(get_current_user), db: Session = Depends(get_db)):
-    fallo = db.query(RegistroFallo).filter(RegistroFallo.id == datos.fallo_id).first()
-    if not fallo or fallo.alumno_id != usuario.id:
+    """Marca como repasados TODOS los fallos pendientes de esa pregunta."""
+    pregunta_id = datos.pregunta_id
+    if pregunta_id is None and datos.fallo_id is not None:
+        fallo = db.query(RegistroFallo).filter(RegistroFallo.id == datos.fallo_id).first()
+        if fallo and fallo.alumno_id == usuario.id:
+            pregunta_id = fallo.pregunta_id
+    if pregunta_id is None:
         raise HTTPException(status_code=404, detail="No se encontró el fallo.")
-    fallo.repasada = True
+    marcados = db.query(RegistroFallo).filter(
+        RegistroFallo.alumno_id == usuario.id,
+        RegistroFallo.pregunta_id == pregunta_id,
+        RegistroFallo.repasada == False,  # noqa: E712
+    ).update({RegistroFallo.repasada: True}, synchronize_session=False)
+    if not marcados:
+        raise HTTPException(status_code=404, detail="No se encontró el fallo.")
     db.commit()
     return {"mensaje": "¡Pregunta superada y eliminada del mazo!"}
 

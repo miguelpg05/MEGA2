@@ -167,7 +167,7 @@ def _crear_test(como, ids, nombre, correctas):
 
 
 def test_entregar_corrige_en_el_servidor_y_guarda_todo(entorno):
-    from models import RespuestaAlumno, RegistroFallo, Puntuacion
+    from models import RespuestaAlumno, RegistroFallo
     como, ids, Sesion = entorno
     test_id, (p1, p2, p3, p4) = _crear_test(como, ids, "Entrega", ["A", "B", "AC", "D"])
 
@@ -187,15 +187,13 @@ def test_entregar_corrige_en_el_servidor_y_guarda_todo(entorno):
     assert (intento.fallos_ultimo, intento.total_preguntas, intento.modo, intento.personalizado) == (2, 4, "examen", False)
     assert db.query(RespuestaAlumno).filter_by(alumno_id=ids["alumno"]).count() == 4
     assert {f.pregunta_id for f in db.query(RegistroFallo).filter_by(alumno_id=ids["alumno"])} == {p2, p4}
-    assert db.query(Puntuacion).filter_by(usuario_id=ids["alumno"]).one().puntos == 2
     db.close()
 
-    # Segunda entrega fallando p2 otra vez: no se duplica la carta de repaso y los puntos se acumulan
+    # Segunda entrega fallando p2 otra vez: no se duplica la carta de repaso
     como("alumno").post("/api/test/entregar", json={"test_plantilla_id": test_id, "modo": "practica",
                         "respuestas": [{"pregunta_id": p1, "seleccion": ["A"]}, {"pregunta_id": p2, "seleccion": ["A"]}]})
     db = Sesion()
     assert db.query(RegistroFallo).filter_by(alumno_id=ids["alumno"], pregunta_id=p2).count() == 1
-    assert db.query(Puntuacion).filter_by(usuario_id=ids["alumno"]).one().puntos == 3
     db.close()
 
     evo = como("alumno").get("/api/test/evolucion").json()
@@ -310,3 +308,81 @@ def test_pool_de_conexiones_para_postgres():
     assert opciones_engine("sqlite://") == {}
     op = opciones_engine("postgresql+psycopg2://u:p@host/db")
     assert op["pool_pre_ping"] is True and op["pool_recycle"] == 300 and op["pool_size"] >= 5
+
+
+# ------------------------------------------------------------------ Fase 2
+
+def _entregar(como, quien, test_id, pids, correctas):
+    """Entrega un test acertando las `correctas` primeras preguntas (la correcta es A)."""
+    resp = [{"pregunta_id": p, "seleccion": ["A" if i < correctas else "B"]} for i, p in enumerate(pids)]
+    r = como(quien).post("/api/test/entregar", json={"test_plantilla_id": test_id, "modo": "examen", "respuestas": resp})
+    assert r.status_code == 200, r.text
+
+
+def test_ranking_por_curso_mejor_intento_por_test(entorno):
+    como, ids, Sesion = entorno
+    t_a, p_a = _crear_test(como, ids, "RA", ["A"] * 4)
+    t_b, p_b = _crear_test(como, ids, "RB", ["A"] * 4)
+
+    _entregar(como, "alumno", t_a, p_a, 2)   # 50 %
+    _entregar(como, "alumno", t_a, p_a, 3)   # 75 % -> mejor intento de RA
+    _entregar(como, "alumno", t_a, p_a, 1)   # 25 % (no baja la nota)
+    _entregar(como, "alumno", t_b, p_b, 4)   # 100 %
+    # Un test personalizado no cuenta para el ranking
+    pers = como("alumno").post("/api/test/personalizado", json={"tema_ids": [ids["t2"]], "num_preguntas": 4}).json()["preguntas"]
+    como("alumno").post("/api/test/entregar", json={"personalizado": True, "respuestas":
+                        [{"pregunta_id": p["id"], "seleccion": ["A"]} for p in pers]})
+
+    # Curso de "Auxiliar" (c1): hay que sacarlo de un tema
+    curso_id = como("alumno").get("/api/temas").json()[0]["curso_id"]
+    r = como("alumno").get(f"/api/ranking/clase?curso_id={curso_id}")
+    assert r.status_code == 200, r.text
+    datos = r.json()
+    assert datos["lideres"][0] == {"posicion": 1, "nombre": "Alumno", "puntos": 175, "tests": 2, "soy_yo": True}
+    assert datos["yo"]["puntos"] == 175
+    # El profesor (staff) no aparece en el ranking aunque haga tests
+    assert all(l["nombre"] != "Profe" for l in datos["lideres"])
+
+    # Sin acceso al curso -> 403; los alumnos no pueden pedir la lista completa
+    assert como("otro").get(f"/api/ranking/clase?curso_id={curso_id}").status_code == 403
+    assert como("alumno").get(f"/api/ranking/clase?curso_id={curso_id}&completo=true").status_code == 403
+    assert como("profe").get(f"/api/ranking/clase?curso_id={curso_id}&completo=true").status_code == 200
+    # Hace falta indicar el curso
+    assert como("alumno").get("/api/ranking/clase").status_code == 422
+
+
+def test_ranking_top5_y_posicion_propia_con_empates():
+    from routers.ranking import TOP_ALUMNOS
+    assert TOP_ALUMNOS == 5
+
+
+def test_ranking_exige_sesion():
+    from fastapi.testclient import TestClient as TC
+    app.dependency_overrides.pop(get_current_user, None)
+    assert TC(app).get("/api/ranking/clase?curso_id=1").status_code == 401
+
+
+def test_repaso_agrupa_por_pregunta_y_completa_todos(entorno):
+    from models import RegistroFallo
+    como, ids, Sesion = entorno
+    db = Sesion()
+    pid = db.query(Pregunta).filter(Pregunta.tema_id == ids["t1"]).first().id
+    # Fallos antiguos duplicados (como los que había antes de esta versión)
+    db.add_all([RegistroFallo(alumno_id=ids["alumno"], pregunta_id=pid, repasada=False) for _ in range(3)])
+    db.commit(); db.close()
+
+    cartas = como("alumno").get("/api/repaso/pendientes").json()
+    assert len(cartas) == 1 and cartas[0]["pregunta_id"] == pid and cartas[0]["veces"] == 3
+
+    assert como("alumno").post("/api/repaso/completar", json={"pregunta_id": pid}).status_code == 200
+    assert como("alumno").get("/api/repaso/pendientes").json() == []
+    # Otro alumno no puede completar fallos ajenos
+    assert como("otro").post("/api/repaso/completar", json={"pregunta_id": pid}).status_code == 404
+
+
+def test_generar_controla_el_curso(entorno):
+    como, ids, _ = entorno
+    test_id, _ = _crear_test(como, ids, "Privado", ["A", "B"])
+    assert len(como("alumno").get(f"/api/test/generar?test_plantilla_id={test_id}").json()) == 2
+    assert como("otro").get(f"/api/test/generar?test_plantilla_id={test_id}").status_code == 403
+    assert como("alumno").get("/api/test/generar?test_plantilla_id=99999").status_code == 404

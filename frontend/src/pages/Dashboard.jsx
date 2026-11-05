@@ -303,7 +303,7 @@ export default function Dashboard() {
             {/* Ficha de evolución de resultados (justo debajo del Mazo de Repaso) */}
             <GraficoEvolucion />
 
-            <RankingClase />
+            <RankingClase cursoId={grupoActivo?.id} />
 
             {/* CONSEJO DEL DÍA (real, sin estadísticas inventadas) */}
             <div className="p-6 bg-orange-500 rounded-3xl text-white shadow-lg shadow-orange-500/20">

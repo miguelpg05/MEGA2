@@ -4,7 +4,7 @@ import secrets
 from urllib.request import urlopen
 from urllib.parse import urlencode
 from urllib.error import URLError
-from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi import APIRouter, Depends, HTTPException, Request, status
 from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
 from sqlalchemy.orm import Session
 from passlib.context import CryptContext
@@ -17,6 +17,7 @@ from models import get_db, Usuario
 from schemas import UsuarioRegistro, UsuarioLogin, GoogleLogin, Token, UsuarioActual
 
 from services.matriculas import aplicar_matriculas_usuario
+from services.limites import limiter, intentos_login, LIMITE_LOGIN, LIMITE_REGISTRO, LIMITE_GOOGLE
 
 router = APIRouter(prefix="/api/auth", tags=["Autenticación"])
 
@@ -193,7 +194,8 @@ def _alumno_puede_usar_contrasena(email: str) -> bool:
 
 # ENDPOINT: REGISTRO con email + contraseña (solo profesores y administradores)
 @router.post("/registro")
-def registrar_usuario(usuario: UsuarioRegistro, db: Session = Depends(get_db)):
+@limiter.limit(LIMITE_REGISTRO)
+def registrar_usuario(request: Request, usuario: UsuarioRegistro, db: Session = Depends(get_db)):
     _validar_dominio_academia(usuario.email)
     if _rol_por_entorno(usuario.email) == ROL_ESTUDIANTE:
         raise HTTPException(
@@ -221,13 +223,19 @@ def registrar_usuario(usuario: UsuarioRegistro, db: Session = Depends(get_db)):
 
 # ENDPOINT: LOGIN con email + contraseña
 @router.post("/login", response_model=Token)
-def iniciar_sesion(usuario: UsuarioLogin, db: Session = Depends(get_db)):
+@limiter.limit(LIMITE_LOGIN)
+def iniciar_sesion(request: Request, usuario: UsuarioLogin, db: Session = Depends(get_db)):
+    # Tras 5 contraseñas erróneas en 15 minutos, la cuenta se bloquea un rato
+    if intentos_login.bloqueada(usuario.email):
+        raise HTTPException(
+            status_code=429,
+            detail="Demasiados intentos fallidos con esta cuenta. Espera 15 minutos y vuelve a intentarlo.",
+        )
     db_user = db.query(Usuario).filter(Usuario.email == usuario.email).first()
-    if not db_user or not db_user.hashed_password:
+    if not db_user or not db_user.hashed_password or not verify_password(usuario.password, db_user.hashed_password):
+        intentos_login.registrar_fallo(usuario.email)
         raise HTTPException(status_code=400, detail="Email o contraseña incorrectos")
-
-    if not verify_password(usuario.password, db_user.hashed_password):
-        raise HTTPException(status_code=400, detail="Email o contraseña incorrectos")
+    intentos_login.limpiar(usuario.email)
 
     _aplicar_promocion_rol(db_user)  # por si el email entró en ADMIN_EMAILS tras registrarse
     if db_user.rol == ROL_ESTUDIANTE and not _alumno_puede_usar_contrasena(db_user.email):
@@ -259,7 +267,8 @@ def _verificar_access_token_google(access_token: str) -> dict:
 
 # ENDPOINT 1: LOGIN con Google (restringido al dominio de la academia)
 @router.post("/google", response_model=Token)
-def iniciar_sesion_google(datos: GoogleLogin, db: Session = Depends(get_db)):
+@limiter.limit(LIMITE_GOOGLE)
+def iniciar_sesion_google(request: Request, datos: GoogleLogin, db: Session = Depends(get_db)):
     if not GOOGLE_CLIENT_ID:
         raise HTTPException(status_code=500, detail="El login con Google no está configurado en el servidor.")
 

@@ -13,4 +13,5 @@ alembic
 openpyxl
 pypdf
 sentry-sdk[fastapi]
+slowapi
 pytest

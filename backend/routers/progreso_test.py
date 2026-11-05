@@ -6,7 +6,7 @@ from pydantic import BaseModel, Field
 from datetime import datetime
 from collections import defaultdict
 
-from models import get_db, TestPlantilla, TestIntento, Pregunta, Usuario, Tema, RespuestaAlumno, RegistroFallo, Puntuacion
+from models import get_db, TestPlantilla, TestIntento, Pregunta, Usuario, Tema, RespuestaAlumno, RegistroFallo
 from routers.auth import get_current_user, es_superadmin
 from routers.temas import _tema_accesible
 from services.preguntas import texto_opcion_correcta, textos_correctos, letras_correctas, LETRAS_OPCION as LETRAS
@@ -44,6 +44,7 @@ def generar_test_exacto(test_plantilla_id: int, usuario: Usuario = Depends(get_c
     Busca SOLAMENTE las preguntas vinculadas a este test específico en el Excel.
     Las desordena para que el alumno no memorice el orden, pero las preguntas son fijas.
     """
+    _plantilla_accesible(db, usuario, test_plantilla_id)
     preguntas_db = db.query(Pregunta)\
                      .filter(Pregunta.test_plantilla_id == test_plantilla_id)\
                      .order_by(func.random())\
@@ -197,15 +198,23 @@ def _puede_ver_tema(usuario: Usuario, tema: Optional[Tema]) -> bool:
     return tema.curso_id is None or tema.curso_id in [c.id for c in usuario.cursos]
 
 
+def _plantilla_accesible(db: Session, usuario: Usuario, test_plantilla_id: int) -> TestPlantilla:
+    """El test existe y pertenece a algún tema de un curso del usuario (404/403 si no)."""
+    plantilla = db.query(TestPlantilla).filter(TestPlantilla.id == test_plantilla_id).first()
+    if not plantilla:
+        raise HTTPException(status_code=404, detail="Este test ya no existe.")
+    if es_superadmin(usuario):
+        return plantilla
+    temas = db.query(Tema).filter(Tema.id.in_(plantilla.tema_ids or [-1])).all()
+    if not any(_puede_ver_tema(usuario, t) for t in temas):
+        raise HTTPException(status_code=403, detail="No tienes acceso a este test.")
+    return plantilla
+
+
 def _preguntas_de_la_entrega(datos: EntregaRequest, usuario: Usuario, db: Session) -> List[Pregunta]:
     """Preguntas que se corrigen, comprobando que el alumno tiene acceso a ellas."""
     if datos.test_plantilla_id is not None:
-        plantilla = db.query(TestPlantilla).filter(TestPlantilla.id == datos.test_plantilla_id).first()
-        if not plantilla:
-            raise HTTPException(status_code=404, detail="Este test ya no existe.")
-        temas = db.query(Tema).filter(Tema.id.in_(plantilla.tema_ids or [-1])).all()
-        if not any(_puede_ver_tema(usuario, t) for t in temas) and not es_superadmin(usuario):
-            raise HTTPException(status_code=403, detail="No tienes acceso a este test.")
+        plantilla = _plantilla_accesible(db, usuario, datos.test_plantilla_id)
         # Se corrigen TODAS las preguntas del test: las que no lleguen cuentan en blanco
         preguntas = db.query(Pregunta).filter(Pregunta.test_plantilla_id == plantilla.id).all()
         ids_test = {p.id for p in preguntas}
@@ -228,8 +237,8 @@ def _preguntas_de_la_entrega(datos: EntregaRequest, usuario: Usuario, db: Sessio
 @router.post("/entregar")
 def entregar_test(datos: EntregaRequest, usuario: Usuario = Depends(get_current_user), db: Session = Depends(get_db)):
     """Corrige el test EN EL SERVIDOR a partir de las opciones marcadas y guarda, en
-    una sola transacción: el intento, las respuestas (progreso por tema), los
-    fallos (mazo de repaso, sin duplicar los pendientes) y los puntos del ranking.
+    una sola transacción: el intento (del que sale el ranking), las respuestas
+    (progreso por tema) y los fallos (mazo de repaso, sin duplicar los pendientes).
     Si algo falla no se guarda nada, y el alumno puede reintentar."""
     preguntas = _preguntas_de_la_entrega(datos, usuario, db)
     if not preguntas:
@@ -274,15 +283,6 @@ def entregar_test(datos: EntregaRequest, usuario: Usuario = Depends(get_current_
             personalizado=datos.test_plantilla_id is None,
             fecha_intento=datetime.utcnow(),
         ))
-
-        hoy = datetime.now().strftime("%Y-%m-%d")
-        fila = db.query(Puntuacion).filter(Puntuacion.usuario_id == usuario.id).first()
-        if fila:
-            fila.puntos = (fila.puntos or 0) + aciertos
-            fila.alumno_nombre = usuario.nombre
-            fila.fecha = hoy
-        else:
-            db.add(Puntuacion(usuario_id=usuario.id, alumno_nombre=usuario.nombre, puntos=aciertos, fecha=hoy))
         db.commit()
     except Exception:
         db.rollback()

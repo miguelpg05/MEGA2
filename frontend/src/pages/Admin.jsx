@@ -865,32 +865,93 @@ function UsuariosSection() {
 }
 
 // ==========================================
-// Sección: RANKING
+// Sección: RANKING (vista completa para el profesorado)
 // ==========================================
-function RankingSection({ esSuperadmin }) {
-  const [aviso, setAviso] = useState('');
+function RankingSection() {
+  const [cursos, setCursos] = useState([]);
+  const [cursoId, setCursoId] = useState('');
+  const [datos, setDatos] = useState(null);
+  const [cargando, setCargando] = useState(true);
+  const [error, setError] = useState('');
 
-  const accion = async (path, confirmar) => {
-    if (!window.confirm(confirmar)) return;
-    setAviso('');
-    try { const res = await apiJson(path, { method: 'DELETE' }); setAviso(res.mensaje); }
-    catch (err) { setAviso(err.message); }
+  const pedirRanking = (id) =>
+    apiJson(`/api/ranking/clase?curso_id=${id}&completo=true`)
+      .then((d) => { setDatos(d); setError(''); })
+      .catch((e) => setError(e.message))
+      .finally(() => setCargando(false));
+
+  useEffect(() => {
+    apiJson('/api/admin/cursos')
+      .then((lista) => {
+        setCursos(lista);
+        if (!lista.length) { setCargando(false); return; }
+        setCursoId(String(lista[0].id));
+        return pedirRanking(lista[0].id);
+      })
+      .catch((e) => { setError(e.message); setCargando(false); });
+  }, []);
+
+  const cargar = (id) => {
+    if (!id) return;
+    setCargando(true);
+    setError('');
+    pedirRanking(id);
+  };
+
+  const elegirCurso = (id) => {
+    setCursoId(id);
+    cargar(id);
   };
 
   return (
-    <div className="bg-white border border-gray-100 rounded-2xl p-6 shadow-sm space-y-4 max-w-xl">
-      <p className="text-gray-600 text-sm">Herramientas de mantenimiento del ranking de la clase.</p>
-      <button onClick={() => accion('/api/admin/ranking/demo', '¿Eliminar las puntuaciones de demostración?')}
-        className="w-full py-2.5 bg-orange-500 hover:bg-orange-600 text-white font-medium rounded-xl cursor-pointer">
-        Eliminar puntuaciones de demostración
-      </button>
-      {esSuperadmin && (
-        <button onClick={() => accion('/api/admin/ranking/reset', '¿Reiniciar TODO el ranking? Esto borra todas las puntuaciones.')}
-          className="w-full py-2.5 bg-red-50 text-red-600 hover:bg-red-100 font-medium rounded-xl cursor-pointer">
-          Reiniciar ranking completo
-        </button>
+    <div className="bg-white border border-gray-100 rounded-2xl p-6 shadow-sm space-y-4">
+      <div className="flex flex-wrap items-end justify-between gap-3">
+        <div>
+          <p className="text-gray-700 font-medium">Ranking completo por curso</p>
+          <p className="text-xs text-gray-400 mt-1">
+            Puntos: suma del mejor % de aciertos de cada test del banco (máx. 100 por test). No cuentan los tests personalizados ni el profesorado.
+            Se calcula solo con los resultados guardados, así que no hace falta mantenerlo.
+          </p>
+        </div>
+        {cursos.length > 0 && (
+          <select value={cursoId} onChange={(e) => elegirCurso(e.target.value)}
+            className="px-3 py-2 rounded-xl bg-gray-50 border border-gray-200 text-sm outline-none focus:ring-2 focus:ring-orange-500">
+            {cursos.map((c) => <option key={c.id} value={c.id}>{c.nombre}</option>)}
+          </select>
+        )}
+      </div>
+
+      {cargando && <Cargando texto="Calculando ranking..." className="py-6" />}
+      {!cargando && error && <MensajeError texto={error} onReintentar={() => cargar(cursoId)} />}
+      {!cargando && !error && cursos.length === 0 && <p className="text-sm text-gray-400">No tienes cursos asignados.</p>}
+      {!cargando && !error && datos && (
+        datos.lideres.length === 0 ? (
+          <p className="text-sm text-gray-400 italic">Ningún alumno de este curso ha hecho todavía tests del banco.</p>
+        ) : (
+          <div className="overflow-x-auto rounded-xl border border-gray-100">
+            <table className="w-full text-sm">
+              <thead className="bg-gray-50 text-gray-500">
+                <tr>
+                  <th className="px-4 py-2 text-left font-medium">Puesto</th>
+                  <th className="px-4 py-2 text-left font-medium">Alumno</th>
+                  <th className="px-4 py-2 text-right font-medium">Tests</th>
+                  <th className="px-4 py-2 text-right font-medium">Puntos</th>
+                </tr>
+              </thead>
+              <tbody>
+                {datos.lideres.map((l) => (
+                  <tr key={`${l.posicion}-${l.nombre}`} className="border-t border-gray-100">
+                    <td className="px-4 py-2 font-semibold text-gray-600">{l.posicion}º</td>
+                    <td className="px-4 py-2 text-gray-700">{l.nombre}</td>
+                    <td className="px-4 py-2 text-right text-gray-500">{l.tests}</td>
+                    <td className="px-4 py-2 text-right font-semibold text-orange-600">{l.puntos}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        )
       )}
-      {aviso && <p className="text-sm text-gray-700">{aviso}</p>}
     </div>
   );
 }
@@ -947,7 +1008,7 @@ export default function Admin() {
         {tab === 'Tests' && <TestsSection />}
         {tab === 'Usuarios' && esSuperadmin && <UsuariosSection />}
         {tab === 'Alumnos (Access)' && esSuperadmin && <SincronizacionAccess />}
-        {tab === 'Ranking' && <RankingSection esSuperadmin={esSuperadmin} />}
+        {tab === 'Ranking' && <RankingSection />}
       </div>
     </div>
   );

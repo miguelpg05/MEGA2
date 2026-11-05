@@ -54,7 +54,8 @@ class ResumenRequest(BaseModel):
 
 
 class RepasoCompletado(BaseModel):
-    fallo_id: int
+    pregunta_id: Optional[int] = None   # marca como repasados todos sus fallos pendientes
+    fallo_id: Optional[int] = None      # compatibilidad con la versión anterior
 
 # --- ESQUEMAS DEL PANEL DE ADMINISTRACIÓN ---
 

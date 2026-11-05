@@ -63,7 +63,12 @@ def cliente(monkeypatch):
     monkeypatch.setattr(main, "extraer_texto_pdf", lambda contenido, max_chars=0: "Art. 57 CE: la Corona es hereditaria. " * 50)
     monkeypatch.setattr(main, "generar_texto", lambda prompt, max_tokens=None: (llamadas.append(prompt) or "## 1. La Corona\ntexto", 100))
     main.app.dependency_overrides[models.get_db] = get_db_test
-    main.app.dependency_overrides[auth.get_current_user] = lambda: Sesion().get(Usuario, ids["alumno"])
+    def usuario_actual():
+        u = Sesion().get(Usuario, ids["alumno"])
+        u.cursos  # carga la relación antes de que la sesión se cierre
+        return u
+
+    main.app.dependency_overrides[auth.get_current_user] = usuario_actual
     yield TestClient(main.app), ids, llamadas
     main.app.dependency_overrides.clear()
 
