@@ -133,7 +133,7 @@ class RegistroFallo(Base):
     __tablename__ = "registro_fallos"
 
     id = Column(Integer, primary_key=True, index=True)
-    alumno_id = Column(Integer) # ID ficticio del alumno por ahora
+    alumno_id = Column(Integer, index=True)  # alumno (usuarios.id); índice en la migración 0008
     pregunta_id = Column(Integer, ForeignKey("preguntas.id"))
     repasada = Column(Boolean, default=False) # Si está a False, saldrá en el próximo "test de repaso"
 

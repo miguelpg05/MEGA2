@@ -8,7 +8,7 @@ from fastapi import APIRouter, Depends, HTTPException, Request, status
 from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
 from sqlalchemy.orm import Session
 from passlib.context import CryptContext
-from jose import jwt, JWTError
+from jose import jwt, JWTError, ExpiredSignatureError
 from google.oauth2 import id_token as google_id_token
 from google.auth.transport import requests as google_requests
 from datetime import datetime, timedelta
@@ -110,25 +110,36 @@ def get_current_user(
     credenciales: HTTPAuthorizationCredentials = Depends(bearer_scheme),
     db: Session = Depends(get_db),
 ) -> Usuario:
-    error_auth = HTTPException(
-        status_code=status.HTTP_401_UNAUTHORIZED,
-        detail="Sesión no válida. Inicia sesión de nuevo.",
-    )
+    # La cabecera X-Motivo-Sesion le dice al frontend qué aviso mostrar en el login:
+    #   caducada         -> el token ha expirado (dura 7 días)
+    #   otro_dispositivo -> se inició sesión con la misma cuenta en otro sitio
+    #   cerrada          -> token no válido, usuario borrado o sesión cerrada
+    def no_autorizado(motivo: str, detalle: str) -> HTTPException:
+        return HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail=detalle,
+            headers={"X-Motivo-Sesion": motivo},
+        )
+
     if not credenciales:
-        raise error_auth
+        raise no_autorizado("cerrada", "Sesión no válida. Inicia sesión de nuevo.")
     try:
         payload = jwt.decode(credenciales.credentials, SECRET_KEY, algorithms=[ALGORITHM])
         usuario_id = int(payload.get("sub"))
         sesion_id = payload.get("sid")
+    except ExpiredSignatureError:
+        raise no_autorizado("caducada", "Tu sesión ha caducado. Inicia sesión de nuevo.")
     except (JWTError, TypeError, ValueError):
-        raise error_auth
+        raise no_autorizado("cerrada", "Sesión no válida. Inicia sesión de nuevo.")
 
     usuario = db.query(Usuario).filter(Usuario.id == usuario_id).first()
-    if not usuario or not sesion_id or usuario.sesion_id != sesion_id:
-        # El sesion_id no coincide: se ha iniciado sesión en otro dispositivo
-        raise HTTPException(
-            status_code=status.HTTP_401_UNAUTHORIZED,
-            detail="Tu sesión se ha cerrado porque se ha iniciado sesión en otro dispositivo.",
+    if not usuario or not sesion_id or not usuario.sesion_id:
+        raise no_autorizado("cerrada", "Tu sesión se ha cerrado. Inicia sesión de nuevo.")
+    if usuario.sesion_id != sesion_id:
+        # Hay una sesión más reciente: se ha iniciado sesión en otro dispositivo
+        raise no_autorizado(
+            "otro_dispositivo",
+            "Tu sesión se ha cerrado porque se ha iniciado sesión en otro dispositivo.",
         )
     return usuario
 

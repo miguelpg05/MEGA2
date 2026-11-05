@@ -4,6 +4,7 @@ import { apiJson } from '../api';
 import { Cargando, MensajeError } from '../components/Estado';
 import { useAuth } from '../auth/AuthContext';
 import SincronizacionAccess from '../components/SincronizacionAccess';
+import { useTituloPagina } from '../utils/titulo';
 
 // Etiquetas legibles de los roles
 const ETIQUETA_ROL = {
@@ -960,6 +961,7 @@ function RankingSection() {
 // PÁGINA PRINCIPAL
 // ==========================================
 export default function Admin() {
+  useTituloPagina('Panel de administración');
   const navigate = useNavigate();
   const { usuario } = useAuth();
   const esSuperadmin = usuario?.rol === 'superadmin';

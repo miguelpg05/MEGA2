@@ -1,8 +1,10 @@
 import React from 'react';
 import { Link } from 'react-router-dom';
+import { useTituloPagina } from '../utils/titulo';
 
 // Página 404: cualquier dirección que no existe en la plataforma.
 export default function NoEncontrada() {
+  useTituloPagina('Página no encontrada');
   return (
     <div className="min-h-screen bg-gray-50 flex items-center justify-center p-6 font-sans">
       <div className="max-w-md w-full bg-white rounded-3xl p-8 shadow-sm border border-gray-100 text-center">

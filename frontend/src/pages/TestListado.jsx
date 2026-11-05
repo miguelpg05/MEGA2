@@ -2,6 +2,7 @@ import React, { useState, useEffect, useCallback } from 'react';
 import { useNavigate, useLocation } from 'react-router-dom';
 import { apiFetch } from '../api';
 import { PantallaCarga, MensajeError } from '../components/Estado';
+import { useTituloPagina } from '../utils/titulo';
 
 export default function TestListado() {
   const navigate = useNavigate();
@@ -9,6 +10,7 @@ export default function TestListado() {
 
   const temaIdSeleccionado = location.state?.temaId || null;
   const temaNombre = location.state?.temaNombre || '';
+  useTituloPagina(temaNombre ? `Tests · ${temaNombre}` : 'Banco de tests');
 
   const [listadoTests, setListadoTests] = useState([]);
   const [cargando, setCargando] = useState(true);

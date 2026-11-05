@@ -2,6 +2,7 @@ import React, { useState, useEffect, useCallback, useRef } from 'react';
 import { useNavigate, useLocation } from 'react-router-dom';
 import { apiFetch } from '../api';
 import { Cargando, MensajeError } from '../components/Estado';
+import { useTituloPagina } from '../utils/titulo';
 
 // ------------------------------------------------------------------
 // Test del alumno. Todas las preguntas se muestran en una lista con
@@ -62,6 +63,7 @@ export default function Test() {
   const testNombre = location.state?.testNombre || '';
   const config = location.state?.personalizado || null; // test configurado por el alumno
   const esPersonalizado = Boolean(config);
+  useTituloPagina(esPersonalizado ? 'Test personalizado' : `Test ${testNombre}`.trim());
 
   // Tiempo:
   // - Test personalizado con tiempo elegido -> cuenta atrás y entrega automática al agotarse.

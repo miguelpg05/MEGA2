@@ -9,6 +9,13 @@ function limpiarSesionLocal() {
 // Error de sesión (401): no se debe reintentar, hay que ir al login.
 class ErrorSesion extends Error {}
 
+// Motivo del 401 (cabecera X-Motivo-Sesion del backend) -> aviso en el login
+const MOTIVOS_SESION = {
+  caducada: 'sesion_caducada',
+  otro_dispositivo: 'sesion_otro_dispositivo',
+  cerrada: 'sesion_cerrada',
+};
+
 // Esperas entre reintentos ante fallos de red. El backend en Render (plan free)
 // se duerme tras un rato y tarda ~50s en despertar; durante ese arranque las
 // peticiones fallan con "Failed to fetch". Con estos reintentos la llamada se
@@ -42,10 +49,12 @@ export async function apiFetch(path, opciones = {}) {
 
       if (response.status === 401) {
         limpiarSesionLocal();
+        const motivo = MOTIVOS_SESION[response.headers.get('X-Motivo-Sesion')] || 'sesion_cerrada';
         if (!window.location.pathname.startsWith('/login')) {
-          window.location.href = '/login?motivo=sesion_otro_dispositivo';
+          // Sin token no había sesión que avisar: solo se va al login
+          window.location.href = token ? `/login?motivo=${motivo}` : '/login';
         }
-        throw new ErrorSesion('Sesión no válida: se ha iniciado sesión en otro dispositivo.');
+        throw new ErrorSesion('La sesión ya no es válida. Inicia sesión de nuevo.');
       }
 
       return response;

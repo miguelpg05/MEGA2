@@ -2,8 +2,10 @@ import React, { useState, useEffect, useCallback } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { apiFetch } from '../api';
 import { Cargando, MensajeError } from '../components/Estado';
+import { useTituloPagina } from '../utils/titulo';
 
 export default function Repaso() {
+  useTituloPagina('Repaso');
   const navigate = useNavigate();
 
   const [flashcards, setFlashcards] = useState([]);

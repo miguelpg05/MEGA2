@@ -1,6 +1,6 @@
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect, useCallback, Suspense } from 'react';
 import { useNavigate, useLocation } from 'react-router-dom';
-import ResumenIA from '../components/ResumenIA';
+import { cargaDiferida } from '../utils/cargaDiferida';
 import RankingClase from '../components/RankingClase';
 import GraficoEvolucion from '../components/GraficoEvolucion';
 import { Cargando, MensajeError } from '../components/Estado';
@@ -8,6 +8,10 @@ import { useAuth } from '../auth/AuthContext';
 import { apiFetch } from '../api';
 import SelectorCurso from '../components/SelectorCurso';
 import { agruparPorCurso, resolverGrupo, guardarCursoActivo } from '../utils/cursos';
+import { useTituloPagina } from '../utils/titulo';
+
+// El resumen con IA (y su librería de Markdown) se descarga solo cuando hace falta
+const ResumenIA = cargaDiferida(() => import('../components/ResumenIA'));
 
 // Consejos de estudio reales (no inventamos estadísticas de rendimiento).
 // Rotan por día para dar algo de variedad sin afirmar datos falsos.
@@ -136,6 +140,7 @@ const PersonalizaTestCard = ({ onAbrir, nombreCurso }) => (
 );
 
 export default function Dashboard() {
+  useTituloPagina('Inicio');
   const navigate = useNavigate();
   const location = useLocation();
   const { usuario } = useAuth();
@@ -274,7 +279,9 @@ export default function Dashboard() {
               </>
             )}
 
-            <ResumenIA />
+            <Suspense fallback={<div className="bg-white border border-gray-100 rounded-3xl p-8 shadow-sm mb-8"><Cargando texto="Cargando el resumen inteligente..." /></div>}>
+              <ResumenIA />
+            </Suspense>
           </div>
 
           {/* COLUMNA LATERAL (DERECHA) */}

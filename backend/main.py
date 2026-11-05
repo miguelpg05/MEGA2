@@ -96,6 +96,8 @@ app.add_middleware(
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
+    # El frontend lee el motivo de un 401 para mostrar el aviso adecuado en el login
+    expose_headers=["X-Motivo-Sesion"],
 )
 
 # ==========================================

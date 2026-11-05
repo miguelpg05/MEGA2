@@ -386,3 +386,46 @@ def test_generar_controla_el_curso(entorno):
     assert len(como("alumno").get(f"/api/test/generar?test_plantilla_id={test_id}").json()) == 2
     assert como("otro").get(f"/api/test/generar?test_plantilla_id={test_id}").status_code == 403
     assert como("alumno").get("/api/test/generar?test_plantilla_id=99999").status_code == 404
+
+
+def test_motivo_de_sesion_en_401():
+    """Caducada, otro dispositivo y cerrada se distinguen con X-Motivo-Sesion."""
+    from datetime import datetime, timedelta
+    from fastapi.testclient import TestClient as TC
+    from jose import jwt as _jwt
+    from routers import auth as _auth
+
+    engine = create_engine("sqlite://", connect_args={"check_same_thread": False}, poolclass=StaticPool)
+    Base.metadata.create_all(bind=engine)
+    Sesion = sessionmaker(bind=engine)
+    db = Sesion()
+    u = Usuario(nombre="U", email="u@academiamega.net", rol="estudiante", sesion_id="actual")
+    db.add(u); db.commit(); uid = u.id; db.close()
+
+    def get_db_test():
+        s = Sesion()
+        try:
+            yield s
+        finally:
+            s.close()
+
+    app.dependency_overrides.clear()
+    app.dependency_overrides[models.get_db] = get_db_test
+    cliente = TC(app)
+
+    def token(sid, minutos=60):
+        return _jwt.encode({"sub": str(uid), "sid": sid, "exp": datetime.utcnow() + timedelta(minutes=minutos)},
+                           _auth.SECRET_KEY, algorithm=_auth.ALGORITHM)
+
+    def motivo(tok):
+        r = cliente.get("/api/auth/me", headers={"Authorization": f"Bearer {tok}"} if tok else {})
+        return r.status_code, r.headers.get("X-Motivo-Sesion")
+
+    try:
+        assert motivo(token("actual")) == (200, None)
+        assert motivo(token("actual", minutos=-5)) == (401, "caducada")
+        assert motivo(token("vieja")) == (401, "otro_dispositivo")
+        assert motivo("basura") == (401, "cerrada")
+        assert motivo(None) == (401, "cerrada")
+    finally:
+        app.dependency_overrides.clear()

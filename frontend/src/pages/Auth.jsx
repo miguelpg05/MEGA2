@@ -3,8 +3,10 @@ import { useNavigate, useSearchParams } from 'react-router-dom';
 import { apiFetch } from '../api';
 import { GOOGLE_CLIENT_ID } from '../config';
 import { useAuth } from '../auth/AuthContext';
+import { useTituloPagina } from '../utils/titulo';
 
 export default function Auth() {
+  useTituloPagina('Iniciar sesión');
   const [esLogin, setEsLogin] = useState(true);
   const [formData, setFormData] = useState({ nombre: '', email: '', password: '' });
   const [error, setError] = useState('');
@@ -15,11 +17,15 @@ export default function Auth() {
   const { recargar } = useAuth();
   const tokenClientRef = useRef(null);
 
-  // Si nos han redirigido aquí porque la sesión se abrió en otro dispositivo, avisamos
+  // Si nos han redirigido aquí porque la sesión terminó, explicamos el motivo
   useEffect(() => {
-    if (searchParams.get('motivo') === 'sesion_otro_dispositivo') {
-      setError('Se ha cerrado tu sesión porque se ha iniciado sesión con esta cuenta en otro dispositivo.');
-    }
+    const avisos = {
+      sesion_otro_dispositivo: 'Se ha cerrado tu sesión porque se ha iniciado sesión con esta cuenta en otro dispositivo.',
+      sesion_caducada: 'Tu sesión ha caducado. Vuelve a iniciar sesión para continuar.',
+      sesion_cerrada: 'Tu sesión se ha cerrado. Vuelve a iniciar sesión para continuar.',
+    };
+    const aviso = avisos[searchParams.get('motivo')];
+    if (aviso) setError(aviso);
   }, [searchParams]);
 
   const guardarSesionYEntrar = async (data) => {
@@ -132,7 +138,7 @@ export default function Auth() {
       <div className="max-w-md w-full bg-white rounded-[2rem] shadow-xl p-6 sm:p-8 border border-gray-100">
 
         <div className="text-center mb-8">
-          <div className="text-5xl mb-4">🏛️</div>
+          <img src="/logo-192.png" alt="Academia MEGA" width="64" height="64" className="mx-auto mb-4 w-16 h-16" />
           <h2 className="text-2xl font-bold text-gray-800">
             {esLogin ? 'Bienvenido a tu Academia' : 'Alta de profesorado'}
           </h2>

@@ -31,7 +31,7 @@ backend/
     temas.py              # Temas visibles del usuario (con nº de preguntas) y sus materiales
     admin.py              # Panel admin: CRUD temas/tests/preguntas, importación, métricas, roles, ranking
   seed.py                 # Datos demo (idempotente); se ejecuta a mano, no en el arranque
-  alembic/                # Migraciones 0001–0007 (0006: tests multi-tema; 0007: sincronización Access)
+  alembic/                # Migraciones 0001–0008 (0006: tests multi-tema; 0007: sincronización Access; 0008: índice registro_fallos)
   inyectar_preguntas.py   # Script para cargar preguntas desde preguntas.xlsx
   services/               # preguntas.py, tests_util.py (nombres/orden de tests), pdf.py, ia.py
   requirements.txt
@@ -39,9 +39,12 @@ frontend/
   src/
     config.js             # API_BASE_URL y GOOGLE_CLIENT_ID (leen de import.meta.env)
     api.js                # apiFetch: añade Bearer y gestiona 401 (sesión en otro dispositivo)
-    pages/                # Auth, Dashboard, Test, TestListado, PersonalizarTest, Repaso, MaterialTema, Admin, PanelAlumno
+    pages/                # Auth, Dashboard, Test, TestListado, PersonalizarTest, Repaso, MaterialTema, Admin, NoEncontrada (404)
     components/           # IndicadorProgreso, RankingClase, ResumenIA, SelectorCurso, GraficoEvolucion, Estado
     utils/cursos.js       # Agrupar temas por curso y recordar el curso activo
+    utils/titulo.js       # useTituloPagina: «Pantalla · Academia MEGA» en la pestaña
+    utils/cargaDiferida.js # React.lazy que recarga 1 vez si falta un chunk tras un despliegue
+  public/                 # favicon.ico, logo-32/192/512.png, apple-touch-icon.png (logo de la academia)
     auth/AuthContext.jsx  # Valida la sesión con /me y expone el usuario+rol
   index.html              # Incluye el script de Google Identity Services
 ```
@@ -162,6 +165,9 @@ Todo el temario cuelga de un **`Curso`**. La tabla intermedia `usuario_cursos` (
 - **Gestión / panel de administración**: roles `alumno`/`profesor`/`admin` (`usuarios.rol`), panel en `/admin` (solo staff) con CRUD de temas/tests/preguntas, importación CSV/XLSX, gestión de roles (solo admin) y limpieza del ranking demo. Métricas: alumnos activos (7d), progreso por tema, preguntas más falladas y uso de IA. Sentry opcional (`SENTRY_DSN`) y registro de uso de Gemini (`ia_llamadas`).
 - **Acceso email+contraseña y Google** (OAuth2 con selector de cuenta forzado): ambas vías restringidas a `@academiamega.net`. El email+contraseña permite crear un admin (vía `ADMIN_EMAILS`) sin depender de una cuenta de Google real — útil porque el 2FA obligatorio del Workspace bloqueaba la cuenta de admin. El registro por contraseña no verifica el buzón (deuda de seguridad conocida).
 - **`respuesta_correcta`**: guarda las letras correctas ordenadas y sin separador (`"A"` o, con varias correctas, `"AC"`). La traducción letras↔texto vive en un único sitio, `services/preguntas.py` (`letras_correctas`/`textos_correctos`/`normalizar_respuesta`), usado por el panel, `main.py` (repaso) y `routers/progreso_test.py`. Tolera datos antiguos (una letra o el texto completo). Cubierto por tests. En el test del alumno una pregunta con varias correctas se acierta solo si el conjunto marcado coincide exactamente.
+- **Carga diferida**: `Test`, `Admin` (en `App.jsx`) y `ResumenIA` (en `Dashboard.jsx`) se cargan con `cargaDiferida` + `Suspense`; el bundle inicial pasó de ~509 KB a ~280 KB.
+- **Motivo de cierre de sesión**: los 401 llevan la cabecera `X-Motivo-Sesion` (`caducada` | `otro_dispositivo` | `cerrada`, expuesta en CORS); `api.js` redirige a `/login?motivo=sesion_…` y `Auth.jsx` muestra el aviso correspondiente.
+- **Personaliza tu test por bloques**: los temas se agrupan por `tema.bloque` (si alguno lo tiene) con «Elegir todo el bloque»; «Todo el temario» marca todos.
 - **Pantalla en blanco**: `components/ErrorBoundary.jsx` envuelve la app y cada ruta (se reinicia al cambiar de página) y `pages/NoEncontrada.jsx` es la ruta `*` (404).
 - **`main.py` sobrecargado**: el seed se movió a `seed.py` (script idempotente, sin usuarios de ranking falsos), los modelos Pydantic a `schemas.py`, y `@app.on_event` → `lifespan`.
 - **Esquema con Alembic**: `Base.metadata.create_all` y los `ALTER TABLE` de arranque se retiraron. Ver carpeta `alembic/`.
@@ -207,6 +213,8 @@ Todo el temario cuelga de un **`Curso`**. La tabla intermedia `usuario_cursos` (
 - Roles, panel `/admin`, CRUD e importación de contenido, métricas, Sentry y uso de Gemini. Pendiente opcional: rediseñar el ranking (hoy inserta una fila por intento con el nombre; considerar agregación por usuario).
 
 **Al desplegar esta fase** (BD de Neon ya existente): ejecutar `alembic upgrade head` para aplicar la migración `0002` (columna `rol` + tabla `ia_llamadas`), y definir `ADMIN_EMAILS` con tu correo para tener el primer administrador.
+
+**Actualización nov. 2026**: aplicar la `0008` (índice). Sin Python local, pegar `sql_neon/0008_indice_registro_fallos.sql` en el SQL Editor de Neon.
 
 **Actualización oct. 2026**: aplicar la `0007` (sincronización con el Access). Sin Python local, pegar `sql_neon/0007_sincronizacion_access.sql` en el SQL Editor de Neon.
 

@@ -4,6 +4,7 @@ import { apiFetch } from '../api';
 import { PantallaCarga, MensajeError } from '../components/Estado';
 import SelectorCurso from '../components/SelectorCurso';
 import { agruparPorCurso, resolverGrupo, guardarCursoActivo } from '../utils/cursos';
+import { useTituloPagina } from '../utils/titulo';
 
 // "Personaliza tu test": el alumno elige temas, nº de preguntas, tiempo y modo.
 const MAX_PREGUNTAS = 200;
@@ -19,6 +20,7 @@ const chip = (activo) =>
   `px-4 py-2 rounded-xl border-2 text-sm font-medium transition-all cursor-pointer ${activo ? 'border-orange-500 bg-orange-50 text-orange-600' : 'border-gray-100 text-gray-500 hover:border-orange-200'}`;
 
 export default function PersonalizarTest() {
+  useTituloPagina('Personaliza tu test');
   const navigate = useNavigate();
   const location = useLocation();
 
@@ -73,6 +75,29 @@ export default function PersonalizarTest() {
   const todosMarcados = temasCurso.length > 0 && temasCurso.every((t) => seleccionValida.includes(t.id));
   const alternarTodos = () => setSeleccion(todosMarcados ? [] : temasCurso.map((t) => t.id));
 
+  // Temas agrupados por bloque (en el orden en que llegan). Si ningún tema tiene
+  // bloque, se muestra la lista sin agrupar, como antes.
+  const bloques = [];
+  for (const t of temasCurso) {
+    const nombre = (t.bloque || '').trim() || 'Otros temas';
+    let b = bloques.find((x) => x.nombre === nombre);
+    if (!b) { b = { nombre, temas: [] }; bloques.push(b); }
+    b.temas.push(t);
+  }
+  const hayBloques = temasCurso.some((t) => (t.bloque || '').trim());
+  if (hayBloques) {
+    // «Otros temas» (sin bloque) siempre al final
+    bloques.sort((a, b) => (a.nombre === 'Otros temas') - (b.nombre === 'Otros temas'));
+  }
+  const alternarBloque = (bloque) => {
+    const ids = bloque.temas.map((t) => t.id);
+    const completo = ids.every((id) => seleccionValida.includes(id));
+    setSeleccion((prev) => {
+      const sinBloque = prev.filter((id) => !ids.includes(id));
+      return completo ? sinBloque : [...sinBloque, ...ids];
+    });
+  };
+
   const empezar = () => {
     setAviso('');
     if (seleccionValida.length === 0) { setAviso('Elige al menos un tema.'); return; }
@@ -120,30 +145,55 @@ export default function PersonalizarTest() {
             <h2 className="font-semibold text-gray-800"><span className="text-orange-500 mr-1">1.</span> Temas que aparecerán</h2>
             {temasCurso.length > 1 && (
               <button onClick={alternarTodos} className="text-sm text-orange-600 hover:underline cursor-pointer">
-                {todosMarcados ? 'Quitar todos' : 'Seleccionar todos'}
+                {todosMarcados ? 'Quitar todos' : 'Todo el temario'}
               </button>
             )}
           </div>
           {temasCurso.length === 0 ? (
             <p className="text-sm text-gray-400">Todavía no hay temas disponibles en tus cursos.</p>
           ) : (
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-              {temasCurso.map((t) => {
-                const marcado = seleccionValida.includes(t.id);
-                const vacio = !t.num_preguntas;
+            <div className="space-y-5">
+              {(hayBloques ? bloques : [{ nombre: null, temas: temasCurso }]).map((bloque) => {
+                const marcadosBloque = bloque.temas.filter((t) => seleccionValida.includes(t.id)).length;
+                const preguntasBloque = bloque.temas.reduce((acc, t) => acc + (t.num_preguntas || 0), 0);
                 return (
-                  <button key={t.id} onClick={() => alternarTema(t.id)}
-                    className={`flex items-center gap-3 p-4 rounded-xl border-2 text-left transition-all cursor-pointer ${marcado ? 'border-orange-500 bg-orange-50' : 'border-gray-100 hover:border-orange-200'}`}>
-                    <span className={`shrink-0 w-5 h-5 rounded border flex items-center justify-center text-xs ${marcado ? 'bg-orange-500 border-orange-500 text-white' : 'border-gray-300'}`}>
-                      {marcado ? '✓' : ''}
-                    </span>
-                    <span className="flex-1 min-w-0">
-                      <span className={`block text-sm font-medium ${marcado ? 'text-orange-700' : 'text-gray-700'}`}>{t.nombre}</span>
-                      <span className={`block text-xs mt-0.5 ${vacio ? 'text-gray-300' : 'text-gray-400'}`}>
-                        {vacio ? 'Sin preguntas todavía' : `${t.num_preguntas} preguntas`}
-                      </span>
-                    </span>
-                  </button>
+                  <div key={bloque.nombre || 'todos'}>
+                    {bloque.nombre && (
+                      <div className="flex flex-wrap items-center justify-between gap-2 mb-2">
+                        <h3 className="text-sm font-semibold text-gray-700">
+                          {bloque.nombre}
+                          <span className="ml-2 text-xs font-normal text-gray-400">
+                            {bloque.temas.length} tema{bloque.temas.length === 1 ? '' : 's'} · {preguntasBloque} preguntas
+                          </span>
+                        </h3>
+                        {bloque.temas.length > 1 && (
+                          <button onClick={() => alternarBloque(bloque)} className="text-xs text-orange-600 hover:underline cursor-pointer">
+                            {marcadosBloque === bloque.temas.length ? 'Quitar bloque' : 'Elegir todo el bloque'}
+                          </button>
+                        )}
+                      </div>
+                    )}
+                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                      {bloque.temas.map((t) => {
+                        const marcado = seleccionValida.includes(t.id);
+                        const vacio = !t.num_preguntas;
+                        return (
+                          <button key={t.id} onClick={() => alternarTema(t.id)}
+                            className={`flex items-center gap-3 p-4 rounded-xl border-2 text-left transition-all cursor-pointer ${marcado ? 'border-orange-500 bg-orange-50' : 'border-gray-100 hover:border-orange-200'}`}>
+                            <span className={`shrink-0 w-5 h-5 rounded border flex items-center justify-center text-xs ${marcado ? 'bg-orange-500 border-orange-500 text-white' : 'border-gray-300'}`}>
+                              {marcado ? '✓' : ''}
+                            </span>
+                            <span className="flex-1 min-w-0">
+                              <span className={`block text-sm font-medium ${marcado ? 'text-orange-700' : 'text-gray-700'}`}>{t.nombre}</span>
+                              <span className={`block text-xs mt-0.5 ${vacio ? 'text-gray-300' : 'text-gray-400'}`}>
+                                {vacio ? 'Sin preguntas todavía' : `${t.num_preguntas} preguntas`}
+                              </span>
+                            </span>
+                          </button>
+                        );
+                      })}
+                    </div>
+                  </div>
                 );
               })}
             </div>

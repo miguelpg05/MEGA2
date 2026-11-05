@@ -2,6 +2,7 @@ import React, { useState, useEffect, useCallback } from 'react';
 import { useNavigate, useLocation } from 'react-router-dom';
 import { apiFetch } from '../api';
 import { Cargando, MensajeError } from '../components/Estado';
+import { useTituloPagina } from '../utils/titulo';
 
 export default function MaterialTema() {
   const navigate = useNavigate();
@@ -9,6 +10,7 @@ export default function MaterialTema() {
 
   const temaId = location.state?.temaId;
   const temaNombre = location.state?.temaNombre || 'Tema';
+  useTituloPagina(`Material · ${temaNombre}`);
 
   const [materiales, setMateriales] = useState([]);
   const [cargando, setCargando] = useState(true);
