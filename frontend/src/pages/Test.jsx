@@ -85,6 +85,7 @@ export default function Test() {
   const [resultado, setResultado] = useState(null); // { aciertos, fallos, enBlanco, total, porcentaje, nota }
   const [guardando, setGuardando] = useState(false);
   const [guardado, setGuardado] = useState(false);
+  const [errorGuardado, setErrorGuardado] = useState('');
   const guardadoRef = useRef(false);
 
   // Tiempo
@@ -149,33 +150,56 @@ export default function Test() {
     apiFetch('/api/test/fallo', { method: 'POST', body: JSON.stringify({ pregunta_id: preguntaId }) })
       .catch((e) => console.error('Error al registrar fallo:', e));
 
-  const guardarResultados = async (res, historial) => {
-    if (guardadoRef.current) return;
+  // Lo que se envía al entregar: solo las opciones marcadas (en letras). La nota,
+  // el progreso, los fallos y los puntos del ranking los calcula el SERVIDOR.
+  const construirEntrega = (resp) => ({
+    test_plantilla_id: esPersonalizado ? null : testPlantillaId,
+    personalizado: esPersonalizado,
+    modo,
+    respuestas: preguntas.map((p) => {
+      const r = resp[p.id];
+      // En Práctica solo cuenta lo ya corregido; en Examen, cualquier opción marcada
+      const cuenta = r && (modo === 'practica' ? r.corregida : r.seleccion.length > 0);
+      const seleccion = cuenta
+        ? r.seleccion.map((texto) => LETRAS[p.opciones.indexOf(texto)]).filter(Boolean)
+        : [];
+      return { pregunta_id: p.id, seleccion };
+    }),
+  });
+
+  // Devuelve true solo si el servidor confirma que se ha guardado.
+  const guardarResultados = async (resp) => {
+    if (guardadoRef.current) return true;
     guardadoRef.current = true;
     setGuardando(true);
+    setErrorGuardado('');
     try {
-      await apiFetch('/api/test/registrar-intento', {
+      const response = await apiFetch('/api/test/entregar', {
         method: 'POST',
-        body: JSON.stringify({
-          test_plantilla_id: esPersonalizado ? null : testPlantillaId,
-          fallos: res.fallos + res.enBlanco,
-          total_preguntas: res.total,
-          modo,
-          personalizado: esPersonalizado,
-        }),
+        body: JSON.stringify(construirEntrega(resp)),
+        reintentar: false, // no reenviar solo: podría duplicar el intento
       });
-      await apiFetch('/api/progreso/guardar-resultados', {
-        method: 'POST',
-        body: JSON.stringify({ respuestas: historial }),
-      });
-      await apiFetch('/api/ranking/guardar', {
-        method: 'POST',
-        body: JSON.stringify({ puntos: res.aciertos }),
-      });
+      const data = await response.json().catch(() => ({}));
+      if (!response.ok) {
+        throw new Error(data.detail || 'El servidor no pudo guardar el resultado.');
+      }
+      // La corrección oficial es la del servidor
+      setResultado((prev) => ({
+        ...prev,
+        aciertos: data.aciertos,
+        fallos: data.fallos,
+        enBlanco: data.en_blanco,
+        total: data.total,
+        porcentaje: data.porcentaje,
+        nota: data.nota,
+      }));
       setGuardado(true);
+      return true;
     } catch (e) {
       console.error('Error al guardar los resultados:', e);
       guardadoRef.current = false; // permite reintentar
+      setErrorGuardado(e.message || 'Revisa tu conexión.');
+      return false;
     } finally {
       setGuardando(false);
     }
@@ -184,23 +208,19 @@ export default function Test() {
   // ---------- Cálculo del resultado ----------
   const calcularResultado = useCallback((resp) => {
     let aciertos = 0, fallos = 0, enBlanco = 0;
-    const historial = [];
     preguntas.forEach((p) => {
       const r = resp[p.id];
       const respondida = r && (modo === 'practica' ? r.corregida : r.seleccion.length > 0);
       if (!respondida) {
         enBlanco += 1;
-        historial.push({ pregunta_id: p.id, es_correcta: false });
         return;
       }
-      const ok = esAcierto(p, r.seleccion);
-      if (ok) aciertos += 1; else fallos += 1;
-      historial.push({ pregunta_id: p.id, es_correcta: ok });
+      if (esAcierto(p, r.seleccion)) aciertos += 1; else fallos += 1;
     });
     const total = preguntas.length;
     const porcentaje = total ? Math.round((aciertos / total) * 100) : 0;
     const nota = total ? Math.round((aciertos / total) * 100) / 10 : 0; // sobre 10, 1 decimal
-    return { res: { aciertos, fallos, enBlanco, total, porcentaje, nota }, historial };
+    return { aciertos, fallos, enBlanco, total, porcentaje, nota };
   }, [preguntas, modo]);
 
   // Entrega (Modo Examen) o fin de tiempo: corrige todo y guarda automáticamente
@@ -209,16 +229,8 @@ export default function Test() {
 
   const finalizar = useCallback((motivo = 'entrega') => {
     const resp = respuestasRef.current;
-    const { res, historial } = calcularResultado(resp);
-
-    // Fallos pendientes de registrar para el mazo de repaso. En Práctica ya se
-    // registraron al corregir; aquí solo faltan las no corregidas.
-    preguntas.forEach((p) => {
-      const r = resp[p.id];
-      const yaRegistrada = modo === 'practica' && r?.corregida;
-      const ok = r && r.seleccion.length > 0 && esAcierto(p, r.seleccion) && (modo === 'examen' || r.corregida);
-      if (!yaRegistrada && !ok) registrarFallo(p.id);
-    });
+    const res = calcularResultado(resp);
+    // Los fallos (mazo de repaso) los registra el servidor al entregar.
 
     if (motivo === 'tiempo') setTiempoAgotado(true);
     if (inicioRef.current !== null) setTiempoEmpleado(Math.floor((Date.now() - inicioRef.current) / 1000));
@@ -229,7 +241,7 @@ export default function Test() {
 
     // En Examen (o si se agota el tiempo) guardamos ya: así la nota no se pierde
     // aunque el alumno cierre la revisión. En Práctica se guarda con el botón final.
-    if (modo === 'examen' || motivo === 'tiempo') guardarResultados(res, historial);
+    if (modo === 'examen' || motivo === 'tiempo') guardarResultados(resp);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [calcularResultado, preguntas, modo]);
 
@@ -293,6 +305,7 @@ export default function Test() {
     setTiempoAgotado(false);
     setTiempoEmpleado(null);
     setGuardado(false);
+    setErrorGuardado('');
     guardadoRef.current = false;
     inicioRef.current = null;
     setSegundos(limiteSeg ?? 0);
@@ -378,17 +391,25 @@ export default function Test() {
               <div className={`h-full transition-all duration-1000 ${superado ? 'bg-green-500' : 'bg-orange-400'}`} style={{ width: `${resultado.porcentaje}%` }}></div>
             </div>
           </div>
+          {errorGuardado && (
+            <p role="alert" className="mb-4 text-sm text-red-700 bg-red-50 border border-red-200 rounded-xl px-4 py-3">
+              ⚠️ No se pudo guardar tu nota: {errorGuardado}
+            </p>
+          )}
           <button
             disabled={guardando}
             onClick={async () => {
-              const { res, historial } = calcularResultado(respuestasRef.current);
-              await guardarResultados(res, historial);
-              volver();
+              if (await guardarResultados(respuestasRef.current)) volver();
             }}
             className="w-full py-4 bg-gray-900 text-white rounded-2xl font-semibold hover:bg-gray-800 transition-colors cursor-pointer disabled:opacity-60"
           >
-            {guardando ? 'Guardando…' : 'Finalizar y guardar nota'}
+            {guardando ? 'Guardando…' : errorGuardado ? 'Reintentar guardar nota' : 'Finalizar y guardar nota'}
           </button>
+          {errorGuardado && (
+            <button onClick={volver} className="mt-3 text-sm text-gray-400 hover:text-gray-600 hover:underline cursor-pointer">
+              Salir sin guardar
+            </button>
+          )}
         </div>
       </div>
     );
@@ -421,12 +442,16 @@ export default function Test() {
               <div className="bg-red-50 rounded-2xl p-3"><div className="text-2xl font-bold text-red-600">{resultado.fallos}</div><div className="text-xs text-red-600">Incorrectas</div></div>
               <div className="bg-gray-100 rounded-2xl p-3"><div className="text-2xl font-bold text-gray-600">{resultado.enBlanco}</div><div className="text-xs text-gray-500">En blanco</div></div>
             </div>
-            <p className="text-xs text-gray-400 mt-4">
-              {guardando ? 'Guardando tu nota…' : guardado ? '✓ Nota guardada en tu historial. Los fallos se han añadido a tu mazo de repaso.' : 'No se pudo guardar la nota.'}
-              {!guardando && !guardado && (
-                <button onClick={() => { const { res, historial } = calcularResultado(respuestasRef.current); guardarResultados(res, historial); }} className="ml-2 text-orange-600 hover:underline cursor-pointer">Reintentar</button>
-              )}
-            </p>
+            {guardando || guardado ? (
+              <p className="text-xs text-gray-400 mt-4">
+                {guardando ? 'Guardando tu nota…' : '✓ Nota guardada en tu historial. Los fallos se han añadido a tu mazo de repaso.'}
+              </p>
+            ) : (
+              <p role="alert" className="mt-4 text-sm text-red-700 bg-red-50 border border-red-200 rounded-xl px-4 py-3">
+                ⚠️ No se pudo guardar tu nota{errorGuardado ? `: ${errorGuardado}` : '.'}
+                <button onClick={() => guardarResultados(respuestasRef.current)} className="ml-2 font-semibold text-orange-600 hover:underline cursor-pointer">Reintentar</button>
+              </p>
+            )}
             <div className="flex flex-col sm:flex-row gap-3 mt-6">
               <button onClick={volver} className="flex-1 py-3 bg-gray-900 text-white rounded-2xl font-semibold hover:bg-gray-800 transition-colors cursor-pointer">
                 {esPersonalizado ? 'Volver al inicio' : 'Volver al banco de tests'}

@@ -79,7 +79,8 @@ npm run lint
 
 **Backend** (`backend/.env` en local; en Render como Environment):
 - `DATABASE_URL` — cadena Postgres de Neon. **Usar el host con `-pooler`** (connection pooling) para soportar concurrencia.
-- `SECRET_KEY` — clave larga y aleatoria para firmar JWT. **Obligatoria en producción** (ver §7, hoy tiene un default inseguro).
+- `SECRET_KEY` — clave aleatoria de **al menos 32 caracteres** para firmar JWT. **Obligatoria**: sin ella (o con la de ejemplo) el backend no arranca (`routers/auth.cargar_secret_key`). En Render: Environment → Generate.
+- `DB_POOL_SIZE` / `DB_MAX_OVERFLOW` — opcionales (10/10). El engine usa `pool_pre_ping` y `pool_recycle=300` porque Neon corta las conexiones al suspenderse (`models.opciones_engine`).
 - `IA_PROVIDER` — `groq` (por defecto) o `gemini`. Groq es gratis y con límites más altos.
 - `GROQ_API_KEY` / `GROQ_MODEL` — clave de Groq (console.groq.com) y modelo (`openai/gpt-oss-120b`; si `GROQ_MODEL` apunta a un modelo retirado se usa este). Groq retira modelos a menudo: revisar https://console.groq.com/docs/deprecations.
 - `GEMINI_API_KEY` / `GEMINI_MODEL` — solo si `IA_PROVIDER=gemini`.
@@ -127,7 +128,7 @@ Todo el temario cuelga de un **`Curso`**. La tabla intermedia `usuario_cursos` (
 
 - **Nombre del test** (`test_plantillas.numero_test`): admite cualquier texto ("001", "Simulacro 3"). Se normaliza con `services/tests_util.normalizar_nombre_test` (un número puro conserva el formato "001") y es único. Los listados usan orden natural (`clave_orden_natural`).
 - **Varios temas por test**: tabla `test_plantilla_temas`. `tema_id` sigue siendo el tema *principal* (por defecto para las preguntas nuevas); usa `TestPlantilla.tema_ids` para obtener todos. Cada pregunta pertenece a uno de los temas del test. Un profesor solo cambia las asignaciones de temas de sus cursos; no puede borrar un test compartido con otros cursos.
-- **Modalidades** (frontend `pages/Test.jsx`, scroll vertical continuo): *Práctica* corrige al marcar (varias correctas → botón Comprobar) y guarda con "Finalizar y guardar nota"; *Examen* no muestra correcciones hasta entregar, entonces muestra nota /10 + corrección completa y guarda automáticamente. Las no respondidas cuentan como fallo. **Tiempo**: Práctica no muestra reloj; Examen muestra un cronómetro ascendente (tiempo transcurrido, y «Tiempo empleado» en el resultado). Solo un test personalizado con tiempo elegido usa cuenta atrás y se entrega solo al agotarse (la antigua cuenta atrás fija de 2 min del banco se eliminó en nov. 2026).
+- **Modalidades** (frontend `pages/Test.jsx`, scroll vertical continuo): *Práctica* corrige al marcar (varias correctas → botón Comprobar) y guarda con "Finalizar y guardar nota"; *Examen* no muestra correcciones hasta entregar, entonces muestra nota /10 + corrección completa y guarda automáticamente. Las no respondidas cuentan como fallo. **Entrega**: el front solo envía las opciones marcadas (letras) a `POST /api/test/entregar`; el servidor corrige y guarda en UNA transacción intento + respuestas (progreso) + fallos (repaso, sin duplicar pendientes) + puntos del ranking. Se retiraron `/api/ranking/guardar`, `/api/progreso/guardar-resultados` y `/api/test/registrar-intento` (se fiaban de lo que mandaba el navegador). Si el guardado falla, la pantalla lo dice y permite reintentar (`apiFetch(..., { reintentar: false })` para no duplicar). **Tiempo**: Práctica no muestra reloj; Examen muestra un cronómetro ascendente (tiempo transcurrido, y «Tiempo empleado» en el resultado). Solo un test personalizado con tiempo elegido usa cuenta atrás y se entrega solo al agotarse (la antigua cuenta atrás fija de 2 min del banco se eliminó en nov. 2026).
 - **Personaliza tu test** (`/personalizar`): temas de un curso + nº de preguntas (máx. 200) + tiempo (o sin límite; si hay límite, al agotarse se entrega solo) + modalidad. Cuenta para progreso, repaso, evolución y ranking. `test_intentos` guarda `total_preguntas`, `modo` y `personalizado` (sin plantilla).
 - **Varios cursos**: el Dashboard muestra pestañas de curso si el alumno tiene más de uno (se recuerda el último en `localStorage`).
 - **Driver de BD**: `models.normalizar_url_bd` fuerza `postgresql+psycopg2://` porque SQLAlchemy 2.1 usa psycopg 3 por defecto y no está instalado.
@@ -158,6 +159,7 @@ Todo el temario cuelga de un **`Curso`**. La tabla intermedia `usuario_cursos` (
 - **Gestión / panel de administración**: roles `alumno`/`profesor`/`admin` (`usuarios.rol`), panel en `/admin` (solo staff) con CRUD de temas/tests/preguntas, importación CSV/XLSX, gestión de roles (solo admin) y limpieza del ranking demo. Métricas: alumnos activos (7d), progreso por tema, preguntas más falladas y uso de IA. Sentry opcional (`SENTRY_DSN`) y registro de uso de Gemini (`ia_llamadas`).
 - **Acceso email+contraseña y Google** (OAuth2 con selector de cuenta forzado): ambas vías restringidas a `@academiamega.net`. El email+contraseña permite crear un admin (vía `ADMIN_EMAILS`) sin depender de una cuenta de Google real — útil porque el 2FA obligatorio del Workspace bloqueaba la cuenta de admin. El registro por contraseña no verifica el buzón (deuda de seguridad conocida).
 - **`respuesta_correcta`**: guarda las letras correctas ordenadas y sin separador (`"A"` o, con varias correctas, `"AC"`). La traducción letras↔texto vive en un único sitio, `services/preguntas.py` (`letras_correctas`/`textos_correctos`/`normalizar_respuesta`), usado por el panel, `main.py` (repaso) y `routers/progreso_test.py`. Tolera datos antiguos (una letra o el texto completo). Cubierto por tests. En el test del alumno una pregunta con varias correctas se acierta solo si el conjunto marcado coincide exactamente.
+- **Pantalla en blanco**: `components/ErrorBoundary.jsx` envuelve la app y cada ruta (se reinicia al cambiar de página) y `pages/NoEncontrada.jsx` es la ruta `*` (404).
 - **`main.py` sobrecargado**: el seed se movió a `seed.py` (script idempotente, sin usuarios de ranking falsos), los modelos Pydantic a `schemas.py`, y `@app.on_event` → `lifespan`.
 - **Esquema con Alembic**: `Base.metadata.create_all` y los `ALTER TABLE` de arranque se retiraron. Ver carpeta `alembic/`.
 - **Tests + CI**: `backend/tests/` con pytest y `.github/workflows/ci.yml` (pytest + lint/build del front).
@@ -171,10 +173,10 @@ Todo el temario cuelga de un **`Curso`**. La tabla intermedia `usuario_cursos` (
 - **Ojo con los servicios duplicados**: existieron a la vez un Render/Vercel antiguos (`backend-academia-kxx5`, `web-mega-flax`) y los buenos (`mega2-mi1o`, `mega-2-rho`). Confirma siempre a qué URL apunta el bundle desplegado.
 
 **⏳ Pendientes (prioridad para siguientes fases):**
-1. **`SECRET_KEY` con default inseguro** (`routers/auth.py`). Si en producción no se define la env var, los JWT son falsificables. Debe fallar al arrancar si falta.
+1. ~~`SECRET_KEY` con default inseguro~~ → resuelto (nov. 2026): el backend no arranca sin una clave segura.
 2. **Sin rate limiting**: los endpoints de IA (`/api/ia/*`) son abusables (coste de Gemini). Añadir límites (p. ej. `slowapi`).
 3. **JWT en `localStorage`**: expuesto a XSS. Aceptable para MVP; tenerlo presente.
-4. **Pool de conexiones sin configurar**: `create_engine(URL)` usa el pool por defecto (5). Con Neon + 200 usuarios hace falta pooled connection y ajustar `pool_size`/`max_overflow`/`pool_pre_ping`.
+4. ~~Pool de conexiones sin configurar~~ → resuelto (nov. 2026): `pool_pre_ping`, `pool_recycle` y tamaño configurable. Sigue siendo recomendable usar el host `-pooler` de Neon en `DATABASE_URL`.
 5. **`inyectar_preguntas.py`** usa `pandas`/`openpyxl`, que no están en `requirements.txt` (script local).
 
 ---

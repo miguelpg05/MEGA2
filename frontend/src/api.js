@@ -20,7 +20,12 @@ const esperar = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
 // Wrapper de fetch: añade la cabecera Authorization automáticamente, reintenta
 // ante fallos de red y, si el backend responde 401 (token inválido o sesión
 // abierta en otro dispositivo), cierra la sesión local y redirige al login.
-export async function apiFetch(path, options = {}) {
+// Opción `reintentar: false`: no reintenta solo ante un fallo de red. Úsala en
+// envíos que guardan datos (p. ej. entregar un test) para no duplicarlos si la
+// petición llegó al servidor pero se perdió la respuesta.
+export async function apiFetch(path, opciones = {}) {
+  const { reintentar = true, ...options } = opciones;
+  const esperas = reintentar ? ESPERAS_MS : [];
   const token = localStorage.getItem('token');
   // No forzamos Content-Type JSON cuando el body es FormData (subida de ficheros):
   // el navegador debe poner el boundary multipart automáticamente.
@@ -31,7 +36,7 @@ export async function apiFetch(path, options = {}) {
     ...options.headers,
   };
 
-  for (let intento = 0; intento <= ESPERAS_MS.length; intento++) {
+  for (let intento = 0; intento <= esperas.length; intento++) {
     try {
       const response = await fetch(`${API_BASE_URL}${path}`, { ...options, headers });
 
@@ -48,8 +53,8 @@ export async function apiFetch(path, options = {}) {
       // Un 401 gestionado no se reintenta.
       if (err instanceof ErrorSesion) throw err;
       // Fallo de red: reintentamos si aún quedan intentos.
-      if (intento < ESPERAS_MS.length) {
-        await esperar(ESPERAS_MS[intento]);
+      if (intento < esperas.length) {
+        await esperar(esperas[intento]);
       }
     }
   }

@@ -14,7 +14,6 @@ from routers.auth import get_current_user, es_superadmin
 from schemas import (
     FalloRequest,
     ResumenRequest,
-    PuntosRequest,
     RepasoCompletado,
 )
 from services.preguntas import texto_opcion_correcta, textos_correctos
@@ -117,9 +116,17 @@ def test_cors():
 
 @app.post("/api/test/fallo")
 def registrar_fallo(datos: FalloRequest, usuario: Usuario = Depends(get_current_user), db: Session = Depends(get_db)):
-    nuevo_fallo = RegistroFallo(alumno_id=usuario.id, pregunta_id=datos.pregunta_id)
-    db.add(nuevo_fallo)
-    db.commit()
+    if not db.query(Pregunta.id).filter(Pregunta.id == datos.pregunta_id).first():
+        raise HTTPException(status_code=404, detail="La pregunta ya no existe.")
+    # Si ya está pendiente de repaso no se duplica la carta
+    ya_pendiente = db.query(RegistroFallo).filter(
+        RegistroFallo.alumno_id == usuario.id,
+        RegistroFallo.pregunta_id == datos.pregunta_id,
+        RegistroFallo.repasada == False,  # noqa: E712
+    ).first()
+    if not ya_pendiente:
+        db.add(RegistroFallo(alumno_id=usuario.id, pregunta_id=datos.pregunta_id))
+        db.commit()
     return {"mensaje": "Fallo guardado en el historial para el repaso automático"}
 
 @app.post("/api/ia/resumir")
@@ -188,20 +195,7 @@ Escribe en español, claro y didáctico. No añadas comentarios sobre ti mismo n
     _registrar_uso_ia(db, usuario.id, "resumen", tokens)
     return {"resumen": texto, "fuente": fuente, "documentos": documentos, "recortado": recortado}
 
-@app.post("/api/ranking/guardar")
-def guardar_puntos(datos: PuntosRequest, usuario: Usuario = Depends(get_current_user), db: Session = Depends(get_db)):
-    # UNA fila por usuario: si ya existe, acumulamos; si no, la creamos.
-    fila = db.query(Puntuacion).filter(Puntuacion.usuario_id == usuario.id).first()
-    hoy = datetime.now().strftime("%Y-%m-%d")
-    if fila:
-        fila.puntos = (fila.puntos or 0) + datos.puntos
-        fila.alumno_nombre = usuario.nombre  # mantener el nombre al día
-        fila.fecha = hoy
-    else:
-        fila = Puntuacion(usuario_id=usuario.id, alumno_nombre=usuario.nombre, puntos=datos.puntos, fecha=hoy)
-        db.add(fila)
-    db.commit()
-    return {"mensaje": "Puntuación registrada", "puntos_totales": fila.puntos}
+# Los puntos del ranking los suma el servidor al corregir (POST /api/test/entregar).
 
 @app.get("/api/ranking/clase")
 def obtener_ranking(db: Session = Depends(get_db)):

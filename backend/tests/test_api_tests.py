@@ -153,21 +153,110 @@ def test_temas_incluyen_num_preguntas(entorno):
     assert temas[ids["t3"]]["curso"] == "Policía"
 
 
-def test_registrar_intento_personalizado_y_evolucion(entorno):
+def _crear_test(como, ids, nombre, correctas):
+    """Crea un test en T1 con una pregunta por cada respuesta correcta indicada."""
+    test = como("jefe").post("/api/admin/tests", json={"numero_test": nombre, "tema_ids": [ids["t1"]]}).json()
+    pids = []
+    for n, letra in enumerate(correctas):
+        r = como("jefe").post("/api/admin/preguntas", json=dict(
+            enunciado=f"{nombre}-{n}", opcion_a="a", opcion_b="b", opcion_c="c", opcion_d="d",
+            respuesta_correcta=letra, tema_id=ids["t1"], test_plantilla_id=test["id"]))
+        assert r.status_code == 200, r.text
+        pids.append(r.json()["id"])
+    return test["id"], pids
+
+
+def test_entregar_corrige_en_el_servidor_y_guarda_todo(entorno):
+    from models import RespuestaAlumno, RegistroFallo, Puntuacion
     como, ids, Sesion = entorno
-    r = como("alumno").post("/api/test/registrar-intento",
-                           json={"fallos": 3, "total_preguntas": 20, "modo": "examen", "personalizado": True})
+    test_id, (p1, p2, p3, p4) = _crear_test(como, ids, "Entrega", ["A", "B", "AC", "D"])
+
+    # p1 bien, p2 mal, p3 (varias correctas) bien, p4 sin enviar -> en blanco
+    r = como("alumno").post("/api/test/entregar", json={
+        "test_plantilla_id": test_id, "modo": "examen",
+        "respuestas": [{"pregunta_id": p1, "seleccion": ["a"]},
+                       {"pregunta_id": p2, "seleccion": ["C"]},
+                       {"pregunta_id": p3, "seleccion": ["C", "A"]}]})
     assert r.status_code == 200, r.text
+    res = r.json()
+    assert (res["aciertos"], res["fallos"], res["en_blanco"], res["total"]) == (2, 1, 1, 4)
+    assert res["nota"] == 5.0 and res["porcentaje"] == 50
+
     db = Sesion()
     intento = db.query(Intento).one()
-    assert (intento.test_plantilla_id, intento.total_preguntas, intento.modo, intento.personalizado) == (None, 20, "examen", True)
+    assert (intento.fallos_ultimo, intento.total_preguntas, intento.modo, intento.personalizado) == (2, 4, "examen", False)
+    assert db.query(RespuestaAlumno).filter_by(alumno_id=ids["alumno"]).count() == 4
+    assert {f.pregunta_id for f in db.query(RegistroFallo).filter_by(alumno_id=ids["alumno"])} == {p2, p4}
+    assert db.query(Puntuacion).filter_by(usuario_id=ids["alumno"]).one().puntos == 2
+    db.close()
+
+    # Segunda entrega fallando p2 otra vez: no se duplica la carta de repaso y los puntos se acumulan
+    como("alumno").post("/api/test/entregar", json={"test_plantilla_id": test_id, "modo": "practica",
+                        "respuestas": [{"pregunta_id": p1, "seleccion": ["A"]}, {"pregunta_id": p2, "seleccion": ["A"]}]})
+    db = Sesion()
+    assert db.query(RegistroFallo).filter_by(alumno_id=ids["alumno"], pregunta_id=p2).count() == 1
+    assert db.query(Puntuacion).filter_by(usuario_id=ids["alumno"]).one().puntos == 3
     db.close()
 
     evo = como("alumno").get("/api/test/evolucion").json()
-    assert evo[0]["total"] == 20 and evo[0]["aciertos"] == 17 and evo[0]["numero_test"] == "Personalizado"
+    assert [e["aciertos"] for e in evo] == [2, 1] and evo[0]["total"] == 4
 
-    # Sin test y sin marcar personalizado -> 400
-    assert como("alumno").post("/api/test/registrar-intento", json={"fallos": 1}).status_code == 400
+
+def test_entregar_rechaza_entregas_invalidas_sin_guardar_nada(entorno):
+    from models import RespuestaAlumno
+    como, ids, Sesion = entorno
+    test_id, (p1,) = _crear_test(como, ids, "Validación", ["A"])
+    otra = Sesion().query(Pregunta).filter(Pregunta.tema_id == ids["t3"]).first().id
+
+    # Pregunta que no es de ese test
+    r = como("alumno").post("/api/test/entregar", json={"test_plantilla_id": test_id,
+                            "respuestas": [{"pregunta_id": otra, "seleccion": ["A"]}]})
+    assert r.status_code == 400
+    # Alumno sin acceso al curso del test
+    r = como("otro").post("/api/test/entregar", json={"test_plantilla_id": test_id,
+                          "respuestas": [{"pregunta_id": p1, "seleccion": ["A"]}]})
+    assert r.status_code == 403
+    # Test que no existe / sin indicar test
+    assert como("alumno").post("/api/test/entregar", json={"test_plantilla_id": 9999,
+                               "respuestas": [{"pregunta_id": p1, "seleccion": []}]}).status_code == 404
+    assert como("alumno").post("/api/test/entregar", json={
+        "respuestas": [{"pregunta_id": p1, "seleccion": []}]}).status_code == 400
+    # Los endpoints antiguos que se fiaban del navegador ya no existen
+    assert como("alumno").post("/api/ranking/guardar", json={"puntos": 9999}).status_code in (404, 405)
+    assert como("alumno").post("/api/progreso/guardar-resultados", json={"respuestas": []}).status_code in (404, 405)
+    assert como("alumno").post("/api/test/registrar-intento", json={"fallos": 0}).status_code in (404, 405)
+
+    db = Sesion()
+    assert db.query(Intento).count() == 0 and db.query(RespuestaAlumno).count() == 0
+    db.close()
+
+
+def test_entregar_personalizado(entorno):
+    como, ids, Sesion = entorno
+    preguntas = como("alumno").post("/api/test/personalizado",
+                                    json={"tema_ids": [ids["t2"]], "num_preguntas": 3}).json()["preguntas"]
+    respuestas = [{"pregunta_id": p["id"], "seleccion": ["A"]} for p in preguntas]  # en T2 la correcta es A
+    r = como("alumno").post("/api/test/entregar", json={"personalizado": True, "modo": "examen", "respuestas": respuestas})
+    assert r.status_code == 200, r.text
+    assert (r.json()["aciertos"], r.json()["total"]) == (3, 3)
+    evo = como("alumno").get("/api/test/evolucion").json()
+    assert evo[0]["numero_test"] == "Personalizado" and evo[0]["porcentaje"] == 100
+
+    # Preguntas de un tema de otro curso -> 403
+    ajena = Sesion().query(Pregunta).filter(Pregunta.tema_id == ids["t1"]).first().id
+    r = como("otro").post("/api/test/entregar", json={"personalizado": True,
+                          "respuestas": [{"pregunta_id": ajena, "seleccion": ["A"]}]})
+    assert r.status_code == 403
+
+
+def test_fallo_suelto_no_duplica_y_valida_pregunta(entorno):
+    from models import RegistroFallo
+    como, ids, Sesion = entorno
+    pid = Sesion().query(Pregunta).filter(Pregunta.tema_id == ids["t1"]).first().id
+    for _ in range(3):
+        assert como("alumno").post("/api/test/fallo", json={"pregunta_id": pid}).status_code == 200
+    assert Sesion().query(RegistroFallo).filter_by(alumno_id=ids["alumno"]).count() == 1
+    assert como("alumno").post("/api/test/fallo", json={"pregunta_id": 99999}).status_code == 404
 
 
 def test_test_antiguo_sin_filas_intermedias_sigue_visible(entorno):
@@ -195,8 +284,8 @@ def test_borrar_contenido_ya_respondido_por_alumnos(entorno):
     # Un alumno responde y falla ambas
     for pid in (p1, p2):
         como("alumno").post("/api/test/fallo", json={"pregunta_id": pid})
-    como("alumno").post("/api/progreso/guardar-resultados",
-                        json={"respuestas": [{"pregunta_id": p1, "es_correcta": False}, {"pregunta_id": p2, "es_correcta": True}]})
+    como("alumno").post("/api/test/entregar", json={"test_plantilla_id": test["id"], "modo": "examen",
+                        "respuestas": [{"pregunta_id": p1, "seleccion": ["B"]}, {"pregunta_id": p2, "seleccion": ["A"]}]})
 
     assert como("jefe").delete(f"/api/admin/preguntas/{p1}").status_code == 200
     assert como("jefe").delete(f"/api/admin/tests/{test['id']}").status_code == 200
@@ -206,3 +295,18 @@ def test_borrar_contenido_ya_respondido_por_alumnos(entorno):
     assert db.query(RespuestaAlumno).filter(RespuestaAlumno.pregunta_id.in_([p1, p2])).count() == 0
     assert db.query(RegistroFallo).filter(RegistroFallo.pregunta_id.in_([p1, p2])).count() == 0
     db.close()
+
+
+def test_secret_key_obligatoria_y_segura():
+    from routers.auth import cargar_secret_key
+    for mala in (None, "", "corta", "mi_clave_super_secreta_para_el_mvp", "cambia-esto-por-una-clave-larga-y-aleatoria"):
+        with pytest.raises(RuntimeError):
+            cargar_secret_key(mala)
+    assert cargar_secret_key("  " + "k" * 40 + " ") == "k" * 40
+
+
+def test_pool_de_conexiones_para_postgres():
+    from models import opciones_engine
+    assert opciones_engine("sqlite://") == {}
+    op = opciones_engine("postgresql+psycopg2://u:p@host/db")
+    assert op["pool_pre_ping"] is True and op["pool_recycle"] == 300 and op["pool_size"] >= 5

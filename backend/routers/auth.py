@@ -21,7 +21,27 @@ from services.matriculas import aplicar_matriculas_usuario
 router = APIRouter(prefix="/api/auth", tags=["Autenticación"])
 
 # Configuración de Seguridad
-SECRET_KEY = os.getenv("SECRET_KEY", "mi_clave_super_secreta_para_el_mvp")  # En producción, define SECRET_KEY en el entorno
+# SECRET_KEY firma los tokens de sesión: sin ella (o con una de ejemplo) cualquiera
+# podría fabricar un token de administrador. Por eso el backend NO arranca sin una
+# clave larga y propia (en Render: Environment > SECRET_KEY > Generate).
+CLAVES_DE_EJEMPLO = {
+    "mi_clave_super_secreta_para_el_mvp",
+    "cambia-esto-por-una-clave-larga-y-aleatoria",
+}
+LONGITUD_MINIMA_SECRET_KEY = 32
+
+
+def cargar_secret_key(valor) -> str:
+    clave = (valor or "").strip()
+    if not clave or clave in CLAVES_DE_EJEMPLO or len(clave) < LONGITUD_MINIMA_SECRET_KEY:
+        raise RuntimeError(
+            "Falta SECRET_KEY o es insegura: define en el entorno una clave aleatoria de al menos "
+            f"{LONGITUD_MINIMA_SECRET_KEY} caracteres (en Render: Environment > SECRET_KEY > Generate)."
+        )
+    return clave
+
+
+SECRET_KEY = cargar_secret_key(os.getenv("SECRET_KEY"))
 ALGORITHM = "HS256"
 ACCESS_TOKEN_EXPIRE_MINUTES = 60 * 24 * 7 # El token durará 1 semana entera
 

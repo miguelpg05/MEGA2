@@ -23,8 +23,24 @@ def normalizar_url_bd(url: str) -> str:
 
 SQLALCHEMY_DATABASE_URL = normalizar_url_bd(SQLALCHEMY_DATABASE_URL)
 
-# Para PostgreSQL eliminamos el 'check_same_thread' que solo era para SQLite
-engine = create_engine(SQLALCHEMY_DATABASE_URL)
+def opciones_engine(url: str) -> dict:
+    """Pool de conexiones para PostgreSQL (Neon).
+    - pool_pre_ping: comprueba la conexión antes de usarla. Neon se suspende tras
+      unos minutos sin uso y corta las conexiones abiertas; sin esto, la primera
+      petición tras un rato de inactividad fallaría con un error 500.
+    - pool_recycle: renueva las conexiones cada 5 minutos por el mismo motivo.
+    - pool_size / max_overflow: conexiones simultáneas (configurables por entorno)."""
+    if url.startswith("sqlite"):
+        return {}
+    return {
+        "pool_pre_ping": True,
+        "pool_recycle": 300,
+        "pool_size": int(os.getenv("DB_POOL_SIZE", "10")),
+        "max_overflow": int(os.getenv("DB_MAX_OVERFLOW", "10")),
+        "pool_timeout": 30,
+    }
+
+engine = create_engine(SQLALCHEMY_DATABASE_URL, **opciones_engine(SQLALCHEMY_DATABASE_URL))
 SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
 
 Base = declarative_base()

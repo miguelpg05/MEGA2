@@ -1,5 +1,5 @@
 import React from 'react';
-import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom';
+import { BrowserRouter, Routes, Route, Navigate, useLocation } from 'react-router-dom';
 
 // Importamos todas las páginas
 import Dashboard from './pages/Dashboard';
@@ -11,6 +11,8 @@ import TestListado from './pages/TestListado';
 import MaterialTema from './pages/MaterialTema';
 import Admin from './pages/Admin';
 import PersonalizarTest from './pages/PersonalizarTest';
+import NoEncontrada from './pages/NoEncontrada';
+import ErrorBoundary from './components/ErrorBoundary';
 
 import { AuthProvider, useAuth } from './auth/AuthContext';
 import { PantallaCarga } from './components/Estado';
@@ -55,27 +57,43 @@ function RutaStaff({ children }) {
   return children;
 }
 
+// Las rutas van dentro de un ErrorBoundary que se reinicia al cambiar de página:
+// un fallo en una pantalla no deja la aplicación entera en blanco.
+function Rutas() {
+  const location = useLocation();
+  return (
+    <ErrorBoundary resetKey={location.pathname}>
+      <Routes>
+        {/* La puerta de entrada es libre (no tiene vigilante) */}
+        <Route path="/login" element={<Auth />} />
+
+        {/* A partir de aquí, envolvemos TODA la academia con el vigilante */}
+        <Route path="/" element={<RutaProtegida><Dashboard /></RutaProtegida>} />
+        <Route path="/test" element={<RutaProtegida><Test /></RutaProtegida>} />
+        <Route path="/panel" element={<RutaProtegida><PanelAlumno /></RutaProtegida>} />
+        <Route path="/repaso" element={<RutaProtegida><Repaso /></RutaProtegida>} />
+        <Route path="/personalizar" element={<RutaProtegida><PersonalizarTest /></RutaProtegida>} />
+        <Route path="/listado-tests" element={<RutaProtegida><TestListado /></RutaProtegida>} />
+        <Route path="/material" element={<RutaProtegida><MaterialTema /></RutaProtegida>} />
+
+        {/* Panel de administración: solo profesores/admins */}
+        <Route path="/admin" element={<RutaStaff><Admin /></RutaStaff>} />
+
+        {/* Cualquier otra dirección: página 404 */}
+        <Route path="*" element={<NoEncontrada />} />
+      </Routes>
+    </ErrorBoundary>
+  );
+}
+
 export default function App() {
   return (
-    <BrowserRouter>
-      <AuthProvider>
-        <Routes>
-          {/* La puerta de entrada es libre (no tiene vigilante) */}
-          <Route path="/login" element={<Auth />} />
-
-          {/* A partir de aquí, envolvemos TODA la academia con el vigilante */}
-          <Route path="/" element={<RutaProtegida><Dashboard /></RutaProtegida>} />
-          <Route path="/test" element={<RutaProtegida><Test /></RutaProtegida>} />
-          <Route path="/panel" element={<RutaProtegida><PanelAlumno /></RutaProtegida>} />
-          <Route path="/repaso" element={<RutaProtegida><Repaso /></RutaProtegida>} />
-          <Route path="/personalizar" element={<RutaProtegida><PersonalizarTest /></RutaProtegida>} />
-          <Route path="/listado-tests" element={<RutaProtegida><TestListado /></RutaProtegida>} />
-          <Route path="/material" element={<RutaProtegida><MaterialTema /></RutaProtegida>} />
-
-          {/* Panel de administración: solo profesores/admins */}
-          <Route path="/admin" element={<RutaStaff><Admin /></RutaStaff>} />
-        </Routes>
-      </AuthProvider>
-    </BrowserRouter>
+    <ErrorBoundary>
+      <BrowserRouter>
+        <AuthProvider>
+          <Rutas />
+        </AuthProvider>
+      </BrowserRouter>
+    </ErrorBoundary>
   );
 }

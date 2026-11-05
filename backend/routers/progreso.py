@@ -3,7 +3,6 @@ from sqlalchemy.orm import Session
 
 # IMPORTANTE: Hemos añadido 'Pregunta' a las importaciones para poder filtrar por tema
 from models import get_db, RespuestaAlumno, Pregunta, Usuario
-from schemas import TestResultado
 from routers.auth import get_current_user
 
 router = APIRouter(prefix="/api/progreso", tags=["Indicadores de Progreso"])
@@ -39,20 +38,5 @@ def obtener_indicador_tema(tema_id: int, usuario: Usuario = Depends(get_current_
         "indicador_texto": f"Tienes este tema al {porcentaje_actual}% · Nivel aprobado: {nivel_objetivo}%"
     }
 
-# ENDPOINT 2: El que guarda los resultados del test
-@router.post("/guardar-resultados")
-def guardar_resultados(resultado: TestResultado, usuario: Usuario = Depends(get_current_user), db: Session = Depends(get_db)):
-    # Recorremos cada respuesta que ha enviado el alumno
-    for resp in resultado.respuestas:
-        # Creamos un registro nuevo en la tabla respuestas_alumnos
-        nueva_respuesta = RespuestaAlumno(
-            alumno_id=usuario.id,
-            pregunta_id=resp.pregunta_id,
-            es_correcta=resp.es_correcta
-        )
-        db.add(nueva_respuesta)
-    
-    # Confirmamos y guardamos todos los cambios de golpe en SQLite
-    db.commit()
-    
-    return {"mensaje": "¡Resultados guardados y progreso actualizado con éxito!"}
+# Los resultados de los tests se guardan con POST /api/test/entregar
+# (routers/progreso_test.py), que corrige en el servidor.

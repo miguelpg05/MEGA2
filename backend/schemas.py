@@ -2,15 +2,8 @@
 from pydantic import BaseModel
 from typing import List, Optional
 
-# Representa una respuesta individual a una pregunta
-class RespuestaEnvio(BaseModel):
-    pregunta_id: int
-    es_correcta: bool
-
-# Representa todo el paquete de datos que nos envía el frontend al terminar el test
-# (el alumno_id ya NO viaja aquí: lo determina el backend a partir del token)
-class TestResultado(BaseModel):
-    respuestas: List[RespuestaEnvio]
+# (Los resultados de un test ya no los envía el frontend corregidos: se corrigen
+#  en el servidor con POST /api/test/entregar, ver routers/progreso_test.py.)
 
 # --- ESQUEMAS PARA AUTENTICACIÓN ---
 
@@ -59,8 +52,6 @@ class ResumenRequest(BaseModel):
     material_id: Optional[int] = None     # un PDF concreto sobre el que basar el resumen
     texto: Optional[str] = None           # texto libre aportado por el usuario
 
-class PuntosRequest(BaseModel):
-    puntos: int
 
 class RepasoCompletado(BaseModel):
     fallo_id: int
