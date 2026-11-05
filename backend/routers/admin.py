@@ -7,12 +7,12 @@ Roles:
   asignados. Cada operación valida el curso implicado.
 - `estudiante`: no entra aquí.
 """
-import csv
 import io
 import os
 from datetime import datetime, timedelta
 
 from fastapi import APIRouter, Depends, HTTPException, UploadFile, File, Query
+from fastapi.responses import StreamingResponse
 from sqlalchemy import func, cast, Integer, or_
 from sqlalchemy.orm import Session
 
@@ -40,6 +40,10 @@ from routers.auth import (
 )
 from services.preguntas import normalizar_respuesta, letras_correctas
 from services.tests_util import normalizar_nombre_test, clave_orden_natural
+from services.importar_preguntas import (
+    ENCABEZADOS, HOJA_PREGUNTAS, clave_enunciado, detectar_columnas, interpretar_fila, leer_filas,
+)
+from services.access_sync import _texto
 
 router = APIRouter(prefix="/api/admin", tags=["Administración"])
 
@@ -534,24 +538,73 @@ def borrar_pregunta(pregunta_id: int, usuario: Usuario = Depends(require_gestor)
 # ==========================================
 # IMPORTACIÓN MASIVA (CSV / XLSX)
 # ==========================================
-def _filas_desde_csv(contenido: bytes):
-    texto = contenido.decode("utf-8-sig")
-    return [dict(fila) for fila in csv.DictReader(io.StringIO(texto))]
+@router.get("/preguntas/plantilla")
+def plantilla_importar_preguntas(usuario: Usuario = Depends(require_gestor), db: Session = Depends(get_db)):
+    """Excel de ejemplo para importar preguntas: hoja «Preguntas» (la que se rellena),
+    hoja «Temas» con los ID de los temas a los que tienes acceso e «Instrucciones»."""
+    from openpyxl import Workbook
+    from openpyxl.styles import Font, PatternFill
 
-def _filas_desde_xlsx(contenido: bytes):
-    try:
-        from openpyxl import load_workbook
-    except ImportError:
-        raise HTTPException(status_code=500, detail="Falta la librería openpyxl para leer .xlsx. Usa un CSV o instálala.")
-    wb = load_workbook(io.BytesIO(contenido), read_only=True, data_only=True)
-    filas = list(wb.active.iter_rows(values_only=True))
-    if not filas:
-        return []
-    cabeceras = [str(c).strip() if c is not None else "" for c in filas[0]]
-    return [
-        {cabeceras[i]: fila[i] for i in range(len(cabeceras)) if i < len(fila)}
-        for fila in filas[1:]
-    ]
+    permitidos = _temas_permitidos_ids(db, usuario)
+    q = db.query(Tema)
+    if permitidos is not None:
+        q = q.filter(Tema.id.in_(permitidos or [-1]))
+    temas = q.order_by(Tema.curso_id, Tema.bloque, Tema.id).all()
+    cursos = {c.id: c.nombre for c in db.query(Curso).all()}
+
+    negrita = Font(bold=True, color="FFFFFF")
+    naranja = PatternFill("solid", fgColor="F97316")
+
+    def cabecera(ws, columnas, anchos):
+        ws.append(columnas)
+        for celda in ws[1]:
+            celda.font, celda.fill = negrita, naranja
+        for letra, ancho in zip("ABCDEFGHI", anchos):
+            ws.column_dimensions[letra].width = ancho
+        ws.freeze_panes = "A2"
+
+    wb = Workbook()
+    ws = wb.active
+    ws.title = HOJA_PREGUNTAS
+    cabecera(ws, ENCABEZADOS, [9, 14, 50, 26, 26, 26, 26, 19, 40])
+    ejemplo = temas[0].id if temas else 1
+    ws.append([ejemplo, "001", "¿Cuál es la norma suprema del ordenamiento jurídico español?",
+               "La Constitución", "Las leyes orgánicas", "Los reglamentos", "Los tratados",
+               "A", "Art. 9.1 CE: los ciudadanos y los poderes públicos están sujetos a la Constitución."])
+    ws.append([ejemplo, "001", "¿Qué dos poderes del Estado se citan en esta pregunta de ejemplo con varias correctas?",
+               "El legislativo", "El municipal", "El judicial", "", "AC",
+               "Ejemplo de pregunta con varias respuestas correctas (se escriben juntas: AC)."])
+
+    wt = wb.create_sheet("Temas")
+    cabecera(wt, ["tema_id", "Tema", "Bloque", "Curso"], [9, 45, 30, 30])
+    for t in temas:
+        wt.append([t.id, t.nombre, t.bloque or "", cursos.get(t.curso_id, "")])
+
+    wi = wb.create_sheet("Instrucciones")
+    wi.column_dimensions["A"].width = 110
+    for linea in [
+        "Cómo importar preguntas",
+        "1. Rellena la hoja «Preguntas»: una fila por pregunta (puedes borrar las dos filas de ejemplo).",
+        "2. tema_id: el número de la hoja «Temas». numero_test: el nombre del test (si no existe, se crea).",
+        "3. opcion_a y opcion_b son obligatorias; opcion_c y opcion_d, opcionales.",
+        "4. respuesta_correcta: A, B, C o D. Si hay varias correctas, escríbelas juntas (p. ej. AC).",
+        "5. explicacion: opcional; se muestra al corregir y en el repaso.",
+        "6. Las filas con algún error no se importan y se indica el número de fila y el motivo.",
+        "7. Si una pregunta ya existe en ese test (mismo enunciado), se omite: puedes reimportar el archivo sin duplicar.",
+        "8. Guarda como Excel (.xlsx) o como CSV (con «,» o «;»).",
+    ]:
+        wi.append([linea])
+    wi["A1"].font = Font(bold=True, size=13)
+
+    salida = io.BytesIO()
+    wb.save(salida)
+    salida.seek(0)
+    return StreamingResponse(
+        salida,
+        media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+        headers={"Content-Disposition": 'attachment; filename="plantilla_preguntas.xlsx"'},
+    )
+
 
 @router.post("/preguntas/importar")
 async def importar_preguntas(
@@ -559,41 +612,47 @@ async def importar_preguntas(
     usuario: Usuario = Depends(require_gestor),
     db: Session = Depends(get_db),
 ):
-    """Importa preguntas desde CSV/XLSX con columnas: tema_id, numero_test (nombre
-    del test, cualquier texto), enunciado, opcion_a..d, respuesta_correcta, explicacion.
+    """Importa preguntas desde Excel o CSV (ver `services/importar_preguntas.py`).
+    - Las filas con errores (p. ej. sin respuesta correcta válida) NO se importan y
+      se devuelven con su número de fila y el motivo.
+    - Las preguntas que ya existen en ese test (mismo enunciado) se omiten, así que
+      reimportar el mismo archivo no duplica nada.
     Solo se aceptan filas de temas a los que tengas acceso."""
     contenido = await archivo.read()
-    nombre = (archivo.filename or "").lower()
+    try:
+        filas = leer_filas(archivo.filename, contenido)
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+    except Exception:
+        raise HTTPException(status_code=400, detail="No se pudo leer el archivo. Comprueba que es un Excel (.xlsx) o un CSV válido.")
+    filas = [f for f in filas if any(_texto(v) for v in f.values())]
+    if not filas:
+        raise HTTPException(status_code=400, detail="El archivo no tiene preguntas.")
+    try:
+        columnas = detectar_columnas(filas[0].keys())
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
 
-    if nombre.endswith(".csv"):
-        filas = _filas_desde_csv(contenido)
-    elif nombre.endswith(".xlsx"):
-        filas = _filas_desde_xlsx(contenido)
-    else:
-        raise HTTPException(status_code=400, detail="Formato no soportado. Sube un .csv o .xlsx")
-
-    creadas = 0
-    errores = []
+    creadas, omitidas, errores = 0, 0, []
+    enunciados_por_test = {}   # test -> enunciados ya existentes (para no duplicar)
     for i, fila in enumerate(filas, start=2):  # fila 1 = cabecera
         try:
-            tema_id = int(fila["tema_id"])
-            tema = db.query(Tema).filter(Tema.id == tema_id).first()
+            datos = interpretar_fila(fila, columnas)
+            tema = db.query(Tema).filter(Tema.id == datos["tema_id"]).first()
             if not tema:
-                raise ValueError(f"el tema {tema_id} no existe")
+                raise ValueError(f"el tema {datos['tema_id']} no existe (mira la hoja «Temas» de la plantilla)")
             verificar_acceso_curso(usuario, tema.curso_id)
 
             # El nombre del test admite cualquier texto ("001", "Simulacro 2"...)
-            numero_test = normalizar_nombre_test(fila.get("numero_test"))
-            if not numero_test:
-                raise ValueError("falta el nombre del test (columna numero_test)")
+            numero_test = normalizar_nombre_test(datos["numero_test"])
             plantilla = db.query(TestPlantilla).filter(TestPlantilla.numero_test == numero_test).first()
             if not plantilla:
-                plantilla = TestPlantilla(tema_id=tema_id, numero_test=numero_test, total_preguntas=10)
+                plantilla = TestPlantilla(tema_id=tema.id, numero_test=numero_test, total_preguntas=10)
                 plantilla.temas = [tema]
                 db.add(plantilla)
                 db.commit()
                 db.refresh(plantilla)
-            elif tema_id not in plantilla.tema_ids:
+            elif tema.id not in plantilla.tema_ids:
                 # Mismo test en otro tema: se asigna también a este tema (test multi-tema),
                 # siempre que el test ya sea visible para quien importa.
                 if not _puede_ver_test(db, usuario, plantilla):
@@ -601,27 +660,42 @@ async def importar_preguntas(
                 plantilla.temas.append(tema)
                 db.commit()
 
+            if plantilla.id not in enunciados_por_test:
+                enunciados_por_test[plantilla.id] = {
+                    clave_enunciado(e) for (e,) in
+                    db.query(Pregunta.enunciado).filter(Pregunta.test_plantilla_id == plantilla.id).all()
+                }
+            clave = clave_enunciado(datos["enunciado"])
+            if clave in enunciados_por_test[plantilla.id]:
+                omitidas += 1
+                continue
+
             db.add(Pregunta(
-                tema_id=tema_id,
+                tema_id=tema.id,
                 test_plantilla_id=plantilla.id,
-                enunciado=str(fila["enunciado"]).strip(),
-                opcion_a=str(fila["opcion_a"]).strip(),
-                opcion_b=str(fila["opcion_b"]).strip(),
-                opcion_c=str(fila["opcion_c"]).strip(),
-                opcion_d=str(fila["opcion_d"]).strip(),
-                respuesta_correcta=(normalizar_respuesta(fila["respuesta_correcta"]) or "A"),
-                explicacion=(str(fila.get("explicacion") or "").strip() or "Consulta el temario para más detalle."),
+                enunciado=datos["enunciado"],
+                opcion_a=datos["opcion_a"],
+                opcion_b=datos["opcion_b"],
+                opcion_c=datos["opcion_c"],
+                opcion_d=datos["opcion_d"],
+                respuesta_correcta=datos["respuesta_correcta"],
+                explicacion=datos["explicacion"],
             ))
+            db.commit()
+            enunciados_por_test[plantilla.id].add(clave)
             creadas += 1
         except HTTPException as e:
             db.rollback()
             errores.append(f"Fila {i}: {e.detail}")
-        except Exception as e:
+        except ValueError as e:
             db.rollback()
             errores.append(f"Fila {i}: {e}")
+        except Exception as e:  # error inesperado: se informa y se sigue con el resto
+            db.rollback()
+            print(f"Error importando la fila {i}: {e!r}")
+            errores.append(f"Fila {i}: no se pudo guardar")
 
-    db.commit()
-    return {"creadas": creadas, "errores": errores}
+    return {"creadas": creadas, "omitidas": omitidas, "errores": errores, "filas": len(filas)}
 
 
 # ==========================================

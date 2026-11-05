@@ -61,8 +61,9 @@ def _filas_csv(contenido: bytes):
     try:
         dialecto = csv.Sniffer().sniff(texto[:4096], delimiters=";,\t")
     except csv.Error:
-        dialecto = csv.excel
-        dialecto.delimiter = ";" if texto.count(";") > texto.count(",") else ","
+        # (Sin modificar csv.excel, que es global: subclase con el separador elegido)
+        class dialecto(csv.excel):
+            delimiter = ";" if texto.count(";") > texto.count(",") else ","
     return [dict(f) for f in csv.DictReader(io.StringIO(texto), dialect=dialecto)]
 
 

@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useCallback, useRef } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { apiJson } from '../api';
+import { apiFetch, apiJson } from '../api';
 import { Cargando, MensajeError } from '../components/Estado';
 import { useAuth } from '../auth/AuthContext';
 import SincronizacionAccess from '../components/SincronizacionAccess';
@@ -436,7 +436,7 @@ function TestsSection() {
   const [filtroTema, setFiltroTema] = useState('');
   const [aviso, setAviso] = useState('');
   const [abiertoId, setAbiertoId] = useState(null); // test cuya edición está desplegada
-  const [importInfo, setImportInfo] = useState('');
+  const [importInfo, setImportInfo] = useState(null); // { texto, errores: [], tipo }
   const fileRef = useRef(null);
 
   const cargar = useCallback(() => {
@@ -489,16 +489,31 @@ function TestsSection() {
   const importar = async (e) => {
     const archivo = e.target.files?.[0];
     if (!archivo) return;
-    setImportInfo('Importando…');
+    setImportInfo({ texto: 'Importando…', errores: [], tipo: 'info' });
     try {
       const fd = new FormData();
       fd.append('archivo', archivo);
       const res = await apiJson('/api/admin/preguntas/importar', { method: 'POST', body: fd });
-      const detalle = res.errores.length ? ` ${res.errores.length} filas con error: ${res.errores.slice(0, 3).join(' · ')}${res.errores.length > 3 ? '…' : ''}` : '';
-      setImportInfo(`Importadas ${res.creadas} preguntas.${detalle}`);
+      const partes = [`${res.creadas} pregunta${res.creadas === 1 ? '' : 's'} importada${res.creadas === 1 ? '' : 's'}`];
+      if (res.omitidas) partes.push(`${res.omitidas} ya existían en su test y se han omitido`);
+      if (res.errores.length) partes.push(`${res.errores.length} fila${res.errores.length === 1 ? '' : 's'} con errores (no importadas)`);
+      setImportInfo({ texto: partes.join(' · ') + '.', errores: res.errores, tipo: res.errores.length ? 'aviso' : 'ok' });
       cargar();
-    } catch (err) { setImportInfo(err.message); }
+    } catch (err) { setImportInfo({ texto: err.message, errores: [], tipo: 'error' }); }
     finally { if (fileRef.current) fileRef.current.value = ''; }
+  };
+
+  const descargarPlantilla = async () => {
+    try {
+      const r = await apiFetch('/api/admin/preguntas/plantilla');
+      if (!r.ok) throw new Error('No se pudo descargar la plantilla.');
+      const url = URL.createObjectURL(await r.blob());
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = 'plantilla_preguntas.xlsx';
+      a.click();
+      URL.revokeObjectURL(url);
+    } catch (err) { setImportInfo({ texto: err.message, errores: [], tipo: 'error' }); }
   };
 
   if (cargando) return <Cargando texto="Cargando tests..." className="py-12" />;
@@ -512,14 +527,36 @@ function TestsSection() {
       <div className="bg-white border border-gray-100 rounded-2xl p-5 shadow-sm flex flex-col sm:flex-row sm:items-center gap-3">
         <div className="flex-1 text-sm text-gray-500">
           <p className="font-semibold text-gray-700">Importar preguntas desde Excel/CSV</p>
-          <p className="text-xs mt-1">Columnas: <code>tema_id, numero_test, enunciado, opcion_a…opcion_d, respuesta_correcta, explicacion</code>. Los tests que no existan se crean solos.</p>
+          <p className="text-xs mt-1">
+            Descarga la plantilla: trae la lista de temas con su ID y las instrucciones. Los tests que no existan se crean solos,
+            las filas con errores no se importan y las preguntas que ya estén en su test se omiten (puedes reimportar sin duplicar).
+          </p>
         </div>
-        <label className="shrink-0 text-sm text-gray-600 cursor-pointer bg-gray-100 hover:bg-gray-200 px-4 py-2 rounded-xl text-center">
-          Importar CSV/XLSX
-          <input ref={fileRef} type="file" accept=".csv,.xlsx" onChange={importar} className="hidden" />
-        </label>
+        <div className="flex flex-col sm:flex-row gap-2 shrink-0">
+          <button type="button" onClick={descargarPlantilla}
+            className="text-sm text-orange-600 hover:bg-orange-50 border border-orange-200 px-4 py-2 rounded-xl cursor-pointer">
+            ⬇ Descargar plantilla
+          </button>
+          <label className="text-sm text-gray-600 cursor-pointer bg-gray-100 hover:bg-gray-200 px-4 py-2 rounded-xl text-center">
+            Importar Excel / CSV
+            <input ref={fileRef} type="file" accept=".csv,.xlsx,.txt" onChange={importar} className="hidden" />
+          </label>
+        </div>
       </div>
-      {importInfo && <p className="text-sm text-gray-600">{importInfo}</p>}
+      {importInfo && (
+        <div role="status" className={`text-sm rounded-xl px-4 py-3 border ${
+          importInfo.tipo === 'error' ? 'bg-red-50 border-red-200 text-red-700'
+            : importInfo.tipo === 'aviso' ? 'bg-amber-50 border-amber-200 text-amber-800'
+            : importInfo.tipo === 'ok' ? 'bg-green-50 border-green-200 text-green-700'
+            : 'bg-gray-50 border-gray-200 text-gray-600'}`}>
+          <p className="font-medium">{importInfo.texto}</p>
+          {importInfo.errores.length > 0 && (
+            <ul className="mt-2 space-y-1 max-h-48 overflow-y-auto text-xs list-disc pl-5">
+              {importInfo.errores.map((e) => <li key={e}>{e}</li>)}
+            </ul>
+          )}
+        </div>
+      )}
 
       <form onSubmit={crear} className="bg-white border border-gray-100 rounded-2xl p-5 shadow-sm space-y-4">
         <h4 className="font-semibold text-gray-700">Nuevo test</h4>
