@@ -67,7 +67,7 @@ export default function Privacidad() {
         <Seccion titulo="6. Tus derechos">
           <p>Puedes ejercer tus derechos de acceso, rectificación, supresión, oposición, limitación y portabilidad:</p>
           <ul className="list-disc pl-5 space-y-1">
-            <li><strong>Acceso y portabilidad:</strong> descarga tus datos en cualquier momento desde «Mi cuenta».</li>
+            <li><strong>Acceso y portabilidad:</strong> solicita una copia de tus datos a la secretaría de la academia.</li>
             <li><strong>Supresión:</strong> solicítala a la secretaría de la academia; se borrarán tu cuenta y todo tu historial de forma definitiva.</li>
             <li><strong>Ranking:</strong> puedes dejar de aparecer desde «Mi cuenta».</li>
           </ul>

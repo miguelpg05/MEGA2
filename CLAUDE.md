@@ -33,7 +33,7 @@ backend/
   seed.py                 # Datos demo (idempotente); se ejecuta a mano, no en el arranque
   alembic/                # Migraciones 0001–0009 (0006: tests multi-tema; 0007: sincronización Access; 0008: índice registro_fallos; 0009: RGPD, índices y texto de PDFs)
   inyectar_preguntas.py   # Script para cargar preguntas desde preguntas.xlsx
-  services/               # preguntas.py, tests_util.py (nombres/orden de tests), pdf.py, ia.py, rgpd.py (privacidad, exportar y suprimir datos)
+  services/               # preguntas.py, tests_util.py (nombres/orden de tests), pdf.py, ia.py, rgpd.py (privacidad y supresión de datos)
   requirements.txt
 frontend/
   src/
@@ -157,12 +157,12 @@ Todo el temario cuelga de un **`Curso`**. La tabla intermedia `usuario_cursos` (
 ## 5e. RGPD y seguridad (nov. 2026)
 
 - **Aceptación de la política**: `/api/auth/me` devuelve `debe_aceptar_privacidad`; el front muestra `AvisoPrivacidad` (bloqueante) hasta `POST /api/auth/privacidad/aceptar`, que guarda fecha y `VERSION_PRIVACIDAD`. `pages/Privacidad.jsx` es un **borrador** con datos entre corchetes: la academia debe revisarlo con su asesor legal.
-- **Acceso/portabilidad**: `GET /api/auth/mis-datos` (JSON descargable desde «Mi cuenta»).
+- **Acceso/portabilidad**: no hay descarga en la plataforma (se retiró a petición de la academia); se solicita a secretaría.
 - **Supresión**: solo el superadmin, `DELETE /api/admin/usuarios/{id}?confirmar_email=…` (hay que escribir el correo; no puede borrarse a sí mismo ni al último superadmin). Borra respuestas, fallos, intentos, uso de IA, matrículas del Access y el usuario (`services/rgpd.suprimir_usuario`). Si el alumno sigue en el Access, se le volverá a matricular al entrar.
 - **Conexiones a BD**: `get_current_user` hace `commit` al terminar (`_liberar_conexion`) para no retener la conexión mientras espera el endpoint; sin esto, con 200 usuarios a la vez el pool se agotaba (errores 500). No quitarlo.
 - **Cabeceras y límites** (`main.py`): HSTS, nosniff, `X-Frame-Options: DENY`, `Referrer-Policy`; 413 por tamaño; CORS cerrado (`allow_credentials=False`, sin regex); `exigir_tls` añade `sslmode=require` a BD remotas. Los esquemas Pydantic limitan longitudes. Los PDF se validan por cabecera `%PDF` y se sirven siempre como `application/pdf`.
 - **Texto de los PDF**: `materiales_tema.texto` se extrae al subir (o la primera vez que se resume) y se reutiliza; `""` = PDF escaneado sin texto.
-- **Inicio (UX)**: en el móvil, barra inferior Estudiar / Repaso / Clase (una sección cada vez); en escritorio se ve todo, separando «Tu progreso personal · solo lo ves tú» y «Competición de la clase». Temas en lista compacta agrupada por bloque.
+- **Inicio (UX)**: en el móvil, barra inferior Estudiar / Repaso / Clase (una sección cada vez); en escritorio se ve todo, separando «Tu progreso personal · solo lo ves tú» y «Competición de la clase». Los temas se muestran como tarjetas (2 columnas en escritorio), como antes.
 
 ## 6. Convenciones de código
 

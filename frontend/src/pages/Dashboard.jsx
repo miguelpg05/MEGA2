@@ -24,63 +24,51 @@ const CONSEJOS_ESTUDIO = [
   'Prioriza los temas con menor porcentaje: ahí está tu mayor margen de mejora.',
 ];
 
-// Fila compacta de un tema: nombre, barra de progreso y accesos a Tests y Material.
-// El progreso llega ya calculado del Dashboard (una sola petición para todos los temas).
-const FilaTema = ({ tema, progreso }) => {
+// Tarjeta de un tema (diseño original). El progreso llega ya calculado del
+// Dashboard: una sola petición para todos los temas en lugar de una por tarjeta.
+const TopicProgressCard = ({ tema, progreso }) => {
   const navigate = useNavigate();
   const porcentaje = progreso?.porcentaje_actual ?? 0;
-  const superado = progreso?.superado ?? false;
-  const respondidas = progreso?.preguntas_respondidas ?? 0;
+  const isTargetMet = progreso?.superado ?? false;
+  const nivelAprobado = progreso?.nivel_aprobado ?? 80;
   const estado = { temaId: tema.id, temaNombre: tema.nombre };
 
   return (
-    <li className="px-4 py-3 sm:px-5 sm:py-4 flex flex-col sm:flex-row sm:items-center gap-2.5 sm:gap-3">
-      <div className="flex-1 min-w-0">
-        <div className="flex items-center gap-2">
-          <h3 className="font-medium text-gray-800 truncate" title={tema.nombre}>{tema.nombre}</h3>
-          {superado && (
-            <span className="shrink-0 px-2 py-0.5 text-[11px] font-semibold text-green-700 bg-green-100 rounded-full">Superado</span>
-          )}
-        </div>
-        <div className="mt-2 flex items-center gap-3">
-          <div className="flex-1 h-2 bg-gray-100 rounded-full overflow-hidden" role="progressbar" aria-valuenow={porcentaje} aria-valuemin={0} aria-valuemax={100} aria-label={`Progreso en ${tema.nombre}`}>
-            <div className={`h-full rounded-full transition-all duration-700 ${superado ? 'bg-green-500' : 'bg-orange-500'}`} style={{ width: `${porcentaje}%` }} />
-          </div>
-          <span className="text-sm font-semibold text-gray-700 w-11 text-right">{porcentaje}%</span>
-        </div>
-        <p className="hidden sm:block mt-1 text-xs text-gray-400">
-          {respondidas === 0 ? 'Aún sin empezar' : `${respondidas} ${respondidas === 1 ? 'pregunta respondida' : 'preguntas respondidas'}`} · Nivel aprobado: {progreso?.nivel_aprobado ?? 80}%
-        </p>
+    <div className="p-6 bg-white border border-gray-200 rounded-2xl shadow-sm hover:shadow-md transition-shadow">
+      <div className="flex justify-between items-center mb-4 gap-2">
+        <h3 className="text-lg sm:text-xl font-medium text-gray-800">{tema.nombre}</h3>
+        {isTargetMet && (
+          <span className="shrink-0 px-3 py-1 text-xs font-semibold text-green-700 bg-green-100 rounded-full">
+            ¡Nivel Superado!
+          </span>
+        )}
       </div>
-      <div className="flex gap-2 shrink-0">
+      <p className="text-sm text-gray-500 mb-4">
+        Llevas este tema al <strong className="text-gray-800">{porcentaje}%</strong> · Nivel aprobado: {nivelAprobado}%
+      </p>
+      <div className="w-full h-3 bg-gray-100 rounded-full overflow-hidden">
+        <div
+          className={`h-full rounded-full transition-all duration-1000 ease-out ${isTargetMet ? 'bg-green-500' : 'bg-orange-500'}`}
+          style={{ width: `${porcentaje}%` }}
+        ></div>
+      </div>
+
+      <div className="mt-6 grid grid-cols-1 sm:grid-cols-2 gap-3">
         <button
           onClick={() => navigate('/listado-tests', { state: estado })}
-          className="flex-1 sm:flex-none py-1.5 sm:py-2 px-4 bg-orange-500 hover:bg-orange-600 text-white text-sm font-medium rounded-lg transition-colors cursor-pointer"
+          className="py-2 px-3 bg-orange-500 hover:bg-orange-600 text-white font-medium rounded-lg transition-colors cursor-pointer"
         >
           Tests
         </button>
         <button
           onClick={() => navigate('/material', { state: estado })}
-          className="flex-1 sm:flex-none py-1.5 sm:py-2 px-4 bg-white border border-gray-200 hover:border-orange-500 hover:text-orange-500 text-gray-600 text-sm font-medium rounded-lg transition-colors cursor-pointer"
+          className="py-2 px-3 bg-white border border-gray-200 hover:border-orange-500 hover:text-orange-500 text-gray-600 font-medium rounded-lg transition-colors cursor-pointer"
         >
           📄 Material
         </button>
       </div>
-    </li>
+    </div>
   );
-};
-
-// Agrupa los temas por bloque (si alguno lo tiene), conservando el orden de llegada.
-const agruparPorBloque = (temas) => {
-  if (!temas.some((t) => t.bloque)) return [{ bloque: null, temas }];
-  const grupos = [];
-  const indice = new Map();
-  temas.forEach((t) => {
-    const clave = t.bloque || 'Otros temas';
-    if (!indice.has(clave)) { indice.set(clave, grupos.length); grupos.push({ bloque: clave, temas: [] }); }
-    grupos[indice.get(clave)].temas.push(t);
-  });
-  return grupos;
 };
 
 // Secciones de la pantalla de inicio. En el móvil se ve una cada vez (barra
@@ -186,8 +174,6 @@ export default function Dashboard() {
     navigate('/login');
   };
 
-  const bloques = agruparPorBloque(temasVisibles);
-
   return (
     <div className="min-h-screen bg-gray-50 p-4 pb-28 sm:p-6 sm:pb-28 lg:p-8 lg:pb-8 font-sans relative">
       <div className="max-w-6xl mx-auto">
@@ -269,31 +255,15 @@ export default function Dashboard() {
                   nombreCurso={variosCursos ? grupoActivo?.nombre : null}
                   onAbrir={() => navigate('/personalizar', { state: { cursoId: grupoActivo?.id } })}
                 />
-                <div className="bg-white border border-gray-200 rounded-2xl shadow-sm overflow-hidden">
-                  <div className="px-5 py-4 border-b border-gray-100 flex items-center justify-between gap-3">
-                    <div>
-                      <h3 className="font-semibold text-gray-800">Tus temas</h3>
-                      <p className="text-xs text-gray-400">Progreso según tu última respuesta a cada pregunta · solo lo ves tú</p>
-                    </div>
-                    <span className="text-xs text-gray-400 shrink-0">{temasVisibles.length} {temasVisibles.length === 1 ? 'tema' : 'temas'}</span>
+                {errorProgreso && (
+                  <div className="px-5 py-3 bg-amber-50 border border-amber-200 text-amber-800 text-sm rounded-2xl flex items-center justify-between gap-3">
+                    <span>No se pudo cargar tu progreso.</span>
+                    <button onClick={cargarProgreso} className="font-medium underline cursor-pointer">Reintentar</button>
                   </div>
-                  {errorProgreso && (
-                    <div className="px-5 py-3 bg-amber-50 text-amber-800 text-sm flex items-center justify-between gap-3">
-                      <span>No se pudo cargar tu progreso.</span>
-                      <button onClick={cargarProgreso} className="font-medium underline cursor-pointer">Reintentar</button>
-                    </div>
-                  )}
-                  {bloques.map((b) => (
-                    <div key={b.bloque || 'todos'}>
-                      {b.bloque && (
-                        <p className="px-5 pt-4 pb-1 text-xs font-semibold text-gray-400 uppercase tracking-wide">{b.bloque}</p>
-                      )}
-                      <ul className="divide-y divide-gray-100">
-                        {b.temas.map((t) => (
-                          <FilaTema key={t.id} tema={t} progreso={progresos[String(t.id)]} />
-                        ))}
-                      </ul>
-                    </div>
+                )}
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                  {temasVisibles.map((t) => (
+                    <TopicProgressCard key={t.id} tema={t} progreso={progresos[String(t.id)]} />
                   ))}
                 </div>
               </>

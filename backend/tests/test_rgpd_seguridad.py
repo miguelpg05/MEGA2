@@ -91,21 +91,13 @@ def test_ranking_nombres_cortos_y_ocultarse(entorno):
 
 # ------------------------------------------------------------ RGPD
 
-def test_aceptar_privacidad_y_descargar_datos(entorno):
+def test_aceptar_privacidad(entorno):
     como, ids, _ = entorno
     me = como("alumno").get("/api/auth/me").json()
     assert me["debe_aceptar_privacidad"] is True and me["mostrar_en_ranking"] is True
     assert como("alumno").post("/api/auth/privacidad/aceptar").json()["aceptada"] is True
     assert como("alumno").get("/api/auth/me").json()["debe_aceptar_privacidad"] is False
 
-    test_id, pids = _crear_test(como, ids, "Datos", ["A", "A"])
-    _entregar(como, "alumno", test_id, pids, 1)
-    r = como("alumno").get("/api/auth/mis-datos")
-    assert r.status_code == 200 and "attachment" in r.headers["content-disposition"]
-    datos = r.json()
-    assert datos["usuario"]["email"] == "a@x" and datos["usuario"]["privacidad_version"]
-    assert len(datos["intentos_de_test"]) == 1 and len(datos["respuestas"]) == 2
-    assert datos["fallos_para_repaso"][0]["repasada"] is False
 
 
 def test_suprimir_usuario_borra_todo_su_historial(entorno):

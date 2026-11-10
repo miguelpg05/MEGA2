@@ -43,7 +43,7 @@ export default function AvisoPrivacidad() {
           puedes ocultarte cuando quieras.
         </p>
         <p className="text-gray-600 mt-2 text-sm leading-relaxed">
-          Puedes descargar tus datos desde «Mi cuenta» y pedir su eliminación a la academia.
+          Puedes pedir a la academia una copia de tus datos o su eliminación.
         </p>
         <label className="flex items-start gap-3 mt-5 cursor-pointer select-none">
           <input type="checkbox" checked={marcado} onChange={(e) => setMarcado(e.target.checked)}

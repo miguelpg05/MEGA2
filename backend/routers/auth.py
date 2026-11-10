@@ -384,16 +384,6 @@ def aceptar_privacidad(usuario: Usuario = Depends(get_current_user), db: Session
     return {"aceptada": True, "version": rgpd.VERSION_PRIVACIDAD}
 
 
-@router.get("/mis-datos")
-def descargar_mis_datos(usuario: Usuario = Depends(get_current_user), db: Session = Depends(get_db)):
-    """Derecho de acceso / portabilidad: todos los datos del usuario en JSON."""
-    from fastapi.responses import JSONResponse
-    return JSONResponse(
-        rgpd.exportar_datos(db, usuario),
-        headers={"Content-Disposition": 'attachment; filename="mis_datos_academia_mega.json"'},
-    )
-
-
 @router.put("/ranking")
 def cambiar_visibilidad_ranking(datos: RankingVisible, usuario: Usuario = Depends(get_current_user),
                                 db: Session = Depends(get_db)):

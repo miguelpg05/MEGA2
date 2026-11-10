@@ -3,8 +3,8 @@ import { apiFetch } from '../api';
 import { useAuth } from '../auth/AuthContext';
 import EnlacePrivacidad from './EnlacePrivacidad';
 
-// «Mi cuenta»: datos básicos, aparecer o no en el ranking, descargar mis datos y
-// cómo solicitar la eliminación (RGPD).
+// «Mi cuenta»: datos básicos, aparecer o no en el ranking y cómo solicitar la
+// eliminación (RGPD).
 export default function MiCuenta({ onCerrar }) {
   const { usuario, recargar } = useAuth();
   const [guardando, setGuardando] = useState(false);
@@ -22,22 +22,6 @@ export default function MiCuenta({ onCerrar }) {
       setAviso('No se pudo guardar el cambio.');
     } finally {
       setGuardando(false);
-    }
-  };
-
-  const descargarDatos = async () => {
-    setAviso('');
-    try {
-      const r = await apiFetch('/api/auth/mis-datos');
-      if (!r.ok) throw new Error();
-      const url = URL.createObjectURL(await r.blob());
-      const a = document.createElement('a');
-      a.href = url;
-      a.download = 'mis_datos_academia_mega.json';
-      a.click();
-      URL.revokeObjectURL(url);
-    } catch {
-      setAviso('No se pudieron descargar tus datos.');
     }
   };
 
@@ -76,11 +60,8 @@ export default function MiCuenta({ onCerrar }) {
 
         <section className="mt-4 p-4 rounded-2xl bg-gray-50 border border-gray-100">
           <h3 className="font-semibold text-gray-700 text-sm">🔒 Tus datos</h3>
-          <button onClick={descargarDatos} className="mt-3 w-full py-2.5 rounded-xl border border-orange-200 text-orange-600 text-sm font-medium hover:bg-orange-50 cursor-pointer">
-            ⬇ Descargar mis datos
-          </button>
-          <p className="text-xs text-gray-500 mt-3 leading-relaxed">
-            Para eliminar tu cuenta y todo tu historial, solicítalo a la secretaría de la academia.
+          <p className="text-xs text-gray-500 mt-2 leading-relaxed">
+            Para obtener una copia de tus datos o eliminar tu cuenta y todo tu historial, solicítalo a la secretaría de la academia.
             Consulta la <EnlacePrivacidad>política de privacidad</EnlacePrivacidad>.
           </p>
         </section>
