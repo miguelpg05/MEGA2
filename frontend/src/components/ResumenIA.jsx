@@ -10,6 +10,7 @@ export default function ResumenIA() {
   const [fuente, setFuente] = useState('temas');   // 'temas' | 'texto' | id-de-pdf
   const [temasSeleccionados, setTemasSeleccionados] = useState([]);
   const [textoLibre, setTextoLibre] = useState('');
+  const [verSinPdf, setVerSinPdf] = useState(false);
 
   const [tiempo, setTiempo] = useState(15);
   const [nivel, setNivel] = useState('Intermedio');
@@ -32,6 +33,11 @@ export default function ResumenIA() {
 
   // Nº de PDFs de cada tema: solo se pueden resumir temas con material
   const pdfsPorTema = materiales.reduce((acc, m) => ({ ...acc, [m.tema_id]: (acc[m.tema_id] || 0) + 1 }), {});
+
+  // Primero los temas con PDF; los que no tienen se pliegan para no alargar la página
+  const temasConPdf = temasDisponibles.filter((t) => pdfsPorTema[t.id]);
+  const temasSinPdf = temasDisponibles.filter((t) => !pdfsPorTema[t.id]);
+  const temasAMostrar = verSinPdf ? [...temasConPdf, ...temasSinPdf] : temasConPdf;
 
   const toggleTema = (id) => {
     setTemasSeleccionados((prev) => prev.includes(id) ? prev.filter((t) => t !== id) : [...prev, id]);
@@ -104,7 +110,10 @@ export default function ResumenIA() {
             <p className="text-sm text-gray-400 italic">Aún no hay temas disponibles para tus cursos.</p>
           )}
           <div className="flex flex-col gap-3">
-            {temasDisponibles.map((t) => {
+            {temasDisponibles.length > 0 && temasConPdf.length === 0 && (
+              <p className="text-sm text-gray-400 italic">Ningún tema tiene PDF todavía. Puedes pegar un texto propio.</p>
+            )}
+            {temasAMostrar.map((t) => {
               const estaSeleccionado = temasSeleccionados.includes(t.id);
               const nPdfs = pdfsPorTema[t.id] || 0;
               return (
@@ -125,6 +134,15 @@ export default function ResumenIA() {
                 </button>
               );
             })}
+            {temasSinPdf.length > 0 && (
+              <button
+                onClick={() => setVerSinPdf((v) => !v)}
+                className="self-start text-sm text-gray-500 hover:text-orange-600 font-medium cursor-pointer"
+                aria-expanded={verSinPdf}
+              >
+                {verSinPdf ? 'Ocultar temas sin material' : `Ver ${temasSinPdf.length} ${temasSinPdf.length === 1 ? 'tema' : 'temas'} sin material ▾`}
+              </button>
+            )}
           </div>
         </div>
       )}

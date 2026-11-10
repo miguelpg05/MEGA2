@@ -7,6 +7,7 @@ import { Cargando, MensajeError } from '../components/Estado';
 import { useAuth } from '../auth/AuthContext';
 import { apiFetch } from '../api';
 import SelectorCurso from '../components/SelectorCurso';
+import MiCuenta from '../components/MiCuenta';
 import { agruparPorCurso, resolverGrupo, guardarCursoActivo } from '../utils/cursos';
 import { useTituloPagina } from '../utils/titulo';
 
@@ -23,107 +24,77 @@ const CONSEJOS_ESTUDIO = [
   'Prioriza los temas con menor porcentaje: ahí está tu mayor margen de mejora.',
 ];
 
-// Componente inteligente de la tarjeta de temas
-const TopicProgressCard = ({ topicName, temaId }) => {
+// Fila compacta de un tema: nombre, barra de progreso y accesos a Tests y Material.
+// El progreso llega ya calculado del Dashboard (una sola petición para todos los temas).
+const FilaTema = ({ tema, progreso }) => {
   const navigate = useNavigate();
-
-  const [progreso, setProgreso] = useState(null);
-  const [cargando, setCargando] = useState(true);
-  const [error, setError] = useState(false);
-
-  // Nota: no mutamos estado de forma síncrona aquí (solo en los callbacks async),
-  // para no disparar renders en cascada desde el efecto. El reintento manual
-  // (evento de usuario) sí puede resetear el estado de carga.
-  const cargar = useCallback(() => {
-    apiFetch(`/api/progreso/tema/${temaId}`)
-      .then((respuesta) => {
-        if (!respuesta.ok) throw new Error('respuesta no OK');
-        return respuesta.json();
-      })
-      .then((datos) => {
-        setProgreso(datos);
-        setError(false);
-        setCargando(false);
-      })
-      .catch((err) => {
-        console.error('Error al obtener el progreso:', err);
-        setError(true);
-        setCargando(false);
-      });
-  }, [temaId]);
-
-  useEffect(() => {
-    cargar();
-  }, [cargar]);
-
-  const reintentar = () => {
-    setCargando(true);
-    setError(false);
-    cargar();
-  };
-
-  if (cargando) {
-    return (
-      <div className="p-6 bg-white border border-gray-200 rounded-2xl shadow-sm flex items-center justify-center min-h-[220px]">
-        <Cargando texto="Calculando nivel..." />
-      </div>
-    );
-  }
-
-  if (error || !progreso) {
-    return (
-      <div className="p-6 bg-white border border-gray-200 rounded-2xl shadow-sm flex items-center justify-center min-h-[220px]">
-        <MensajeError texto="No se pudo cargar el progreso de este tema." onReintentar={reintentar} />
-      </div>
-    );
-  }
-
-  const progressWidth = `${progreso.porcentaje_actual}%`;
-  const isTargetMet = progreso.superado;
+  const porcentaje = progreso?.porcentaje_actual ?? 0;
+  const superado = progreso?.superado ?? false;
+  const respondidas = progreso?.preguntas_respondidas ?? 0;
+  const estado = { temaId: tema.id, temaNombre: tema.nombre };
 
   return (
-    <div className="p-6 bg-white border border-gray-200 rounded-2xl shadow-sm hover:shadow-md transition-shadow">
-      <div className="flex justify-between items-center mb-4 gap-2">
-        <h3 className="text-lg sm:text-xl font-medium text-gray-800">{topicName}</h3>
-        {isTargetMet && (
-          <span className="shrink-0 px-3 py-1 text-xs font-semibold text-green-700 bg-green-100 rounded-full">
-            ¡Nivel Superado!
-          </span>
-        )}
+    <li className="px-4 py-3 sm:px-5 sm:py-4 flex flex-col sm:flex-row sm:items-center gap-2.5 sm:gap-3">
+      <div className="flex-1 min-w-0">
+        <div className="flex items-center gap-2">
+          <h3 className="font-medium text-gray-800 truncate" title={tema.nombre}>{tema.nombre}</h3>
+          {superado && (
+            <span className="shrink-0 px-2 py-0.5 text-[11px] font-semibold text-green-700 bg-green-100 rounded-full">Superado</span>
+          )}
+        </div>
+        <div className="mt-2 flex items-center gap-3">
+          <div className="flex-1 h-2 bg-gray-100 rounded-full overflow-hidden" role="progressbar" aria-valuenow={porcentaje} aria-valuemin={0} aria-valuemax={100} aria-label={`Progreso en ${tema.nombre}`}>
+            <div className={`h-full rounded-full transition-all duration-700 ${superado ? 'bg-green-500' : 'bg-orange-500'}`} style={{ width: `${porcentaje}%` }} />
+          </div>
+          <span className="text-sm font-semibold text-gray-700 w-11 text-right">{porcentaje}%</span>
+        </div>
+        <p className="hidden sm:block mt-1 text-xs text-gray-400">
+          {respondidas === 0 ? 'Aún sin empezar' : `${respondidas} ${respondidas === 1 ? 'pregunta respondida' : 'preguntas respondidas'}`} · Nivel aprobado: {progreso?.nivel_aprobado ?? 80}%
+        </p>
       </div>
-      <p className="text-sm text-gray-500 mb-4">
-        Llevas este tema al <strong className="text-gray-800">{progreso.porcentaje_actual}%</strong> · Nivel aprobado: {progreso.nivel_aprobado}%
-      </p>
-      <div className="w-full h-3 bg-gray-100 rounded-full overflow-hidden">
-        <div
-          className={`h-full rounded-full transition-all duration-1000 ease-out ${isTargetMet ? 'bg-green-500' : 'bg-orange-500'}`}
-          style={{ width: progressWidth }}
-        ></div>
-      </div>
-
-      <div className="mt-6 grid grid-cols-1 sm:grid-cols-2 gap-3">
+      <div className="flex gap-2 shrink-0">
         <button
-          onClick={() => navigate('/listado-tests', { state: { temaId: temaId, temaNombre: topicName } })}
-          className="py-2 px-3 bg-orange-500 hover:bg-orange-600 text-white font-medium rounded-lg transition-colors cursor-pointer"
+          onClick={() => navigate('/listado-tests', { state: estado })}
+          className="flex-1 sm:flex-none py-1.5 sm:py-2 px-4 bg-orange-500 hover:bg-orange-600 text-white text-sm font-medium rounded-lg transition-colors cursor-pointer"
         >
           Tests
         </button>
-
         <button
-          onClick={() => navigate('/material', { state: { temaId: temaId, temaNombre: topicName } })}
-          className="py-2 px-3 bg-white border border-gray-200 hover:border-orange-500 hover:text-orange-500 text-gray-600 font-medium rounded-lg transition-colors cursor-pointer"
+          onClick={() => navigate('/material', { state: estado })}
+          className="flex-1 sm:flex-none py-1.5 sm:py-2 px-4 bg-white border border-gray-200 hover:border-orange-500 hover:text-orange-500 text-gray-600 text-sm font-medium rounded-lg transition-colors cursor-pointer"
         >
           📄 Material
         </button>
       </div>
-    </div>
+    </li>
   );
 };
 
+// Agrupa los temas por bloque (si alguno lo tiene), conservando el orden de llegada.
+const agruparPorBloque = (temas) => {
+  if (!temas.some((t) => t.bloque)) return [{ bloque: null, temas }];
+  const grupos = [];
+  const indice = new Map();
+  temas.forEach((t) => {
+    const clave = t.bloque || 'Otros temas';
+    if (!indice.has(clave)) { indice.set(clave, grupos.length); grupos.push({ bloque: clave, temas: [] }); }
+    grupos[indice.get(clave)].temas.push(t);
+  });
+  return grupos;
+};
+
+// Secciones de la pantalla de inicio. En el móvil se ve una cada vez (barra
+// inferior); en el ordenador se ven todas a la vez.
+const SECCIONES = [
+  { id: 'estudiar', icono: '📚', texto: 'Estudiar' },
+  { id: 'repaso', icono: '🗂️', texto: 'Repaso' },
+  { id: 'clase', icono: '🏆', texto: 'Clase' },
+];
+
 // Tarjeta de acceso a "Personaliza tu test"
 const PersonalizaTestCard = ({ onAbrir, nombreCurso }) => (
-  <div className="p-6 bg-white border-2 border-orange-100 rounded-2xl shadow-sm flex flex-col sm:flex-row sm:items-center gap-4">
-    <div className="text-4xl" aria-hidden="true">🧩</div>
+  <div className="p-5 sm:p-6 bg-white border-2 border-orange-100 rounded-2xl shadow-sm flex flex-col sm:flex-row sm:items-center gap-4">
+    <div className="hidden sm:block text-4xl" aria-hidden="true">🧩</div>
     <div className="flex-1">
       <h3 className="text-lg font-semibold text-gray-800">Personaliza tu test</h3>
       <p className="text-sm text-gray-500 mt-1">
@@ -168,6 +139,26 @@ export default function Dashboard() {
 
   const reintentarTemas = () => { setCargandoTemas(true); setErrorTemas(false); cargarTemas(); };
 
+  // Progreso de todos los temas en UNA petición (antes era una por tarjeta)
+  const [progresos, setProgresos] = useState({});
+  const [errorProgreso, setErrorProgreso] = useState(false);
+  const cargarProgreso = useCallback(() => {
+    apiFetch('/api/progreso/temas')
+      .then((r) => {
+        if (!r.ok) throw new Error('respuesta no OK');
+        return r.json();
+      })
+      .then((datos) => { setProgresos(datos || {}); setErrorProgreso(false); })
+      .catch((err) => { console.error('Error al cargar el progreso:', err); setErrorProgreso(true); });
+  }, []);
+  useEffect(() => { cargarProgreso(); }, [cargarProgreso]);
+
+  const [seccion, setSeccion] = useState('estudiar');
+  const [cuentaAbierta, setCuentaAbierta] = useState(false);
+  const cambiarSeccion = (id) => { setSeccion(id); window.scrollTo({ top: 0, behavior: 'smooth' }); };
+  // En el móvil solo se ve la sección activa; desde lg se ven todas
+  const visible = (id) => (seccion === id ? 'block' : 'hidden lg:block');
+
   // Varios cursos: se agrupan los temas por curso y se muestra uno cada vez.
   const grupos = agruparPorCurso(temas);
   const [cursoElegido, setCursoElegido] = useState(location.state?.cursoId ?? null);
@@ -195,14 +186,16 @@ export default function Dashboard() {
     navigate('/login');
   };
 
+  const bloques = agruparPorBloque(temasVisibles);
+
   return (
-    <div className="min-h-screen bg-gray-50 p-4 sm:p-6 lg:p-8 font-sans relative">
+    <div className="min-h-screen bg-gray-50 p-4 pb-28 sm:p-6 sm:pb-28 lg:p-8 lg:pb-8 font-sans relative">
       <div className="max-w-6xl mx-auto">
 
-        {/* CABECERA PERSONALIZADA CON BOTÓN DE SALIR */}
-        <header className="mb-8 flex flex-col md:flex-row md:justify-between md:items-center bg-white p-6 rounded-3xl shadow-sm border border-gray-100">
+        {/* CABECERA */}
+        <header className="mb-6 lg:mb-8 flex flex-col md:flex-row md:justify-between md:items-center bg-white p-5 sm:p-6 rounded-3xl shadow-sm border border-gray-100">
           <div className="mb-4 md:mb-0">
-            <h1 className="text-2xl sm:text-3xl font-light text-gray-900">
+            <h1 className="text-xl sm:text-3xl font-light text-gray-900">
               Hola, <span className="font-semibold text-orange-500">{nombreUsuario}</span> 👋
             </h1>
             <p className="text-gray-500 mt-2">
@@ -212,18 +205,24 @@ export default function Dashboard() {
               )}
             </p>
           </div>
-          <div className="flex flex-wrap gap-3 self-start md:self-auto">
+          <div className="grid grid-cols-2 sm:flex sm:flex-wrap gap-2 sm:gap-3 md:self-auto">
             {esStaff && (
               <button
                 onClick={() => navigate('/admin')}
-                className="text-sm bg-gray-900 text-white px-5 py-2.5 rounded-xl font-medium hover:bg-gray-800 transition-colors shadow-sm cursor-pointer"
+                className="col-span-2 sm:col-span-1 text-sm bg-gray-900 text-white px-4 sm:px-5 py-2.5 rounded-xl font-medium hover:bg-gray-800 transition-colors shadow-sm cursor-pointer"
               >
                 ⚙️ Panel admin
               </button>
             )}
             <button
+              onClick={() => setCuentaAbierta(true)}
+              className="whitespace-nowrap text-sm bg-gray-100 text-gray-700 px-3 sm:px-5 py-2.5 rounded-xl font-medium hover:bg-gray-200 transition-colors shadow-sm cursor-pointer"
+            >
+              👤 Mi cuenta
+            </button>
+            <button
               onClick={cerrarSesion}
-              className="text-sm bg-red-50 text-red-600 px-5 py-2.5 rounded-xl font-medium hover:bg-red-100 transition-colors shadow-sm cursor-pointer"
+              className="whitespace-nowrap text-sm bg-red-50 text-red-600 px-3 sm:px-5 py-2.5 rounded-xl font-medium hover:bg-red-100 transition-colors shadow-sm cursor-pointer"
             >
               Cerrar sesión
             </button>
@@ -232,15 +231,14 @@ export default function Dashboard() {
 
         {/* SELECTOR DE CURSO (solo si está matriculado en varios) */}
         {!cargandoTemas && !errorTemas && (
-          <SelectorCurso grupos={grupos} activo={grupoActivo?.id} onCambiar={cambiarCurso} className="mb-8" />
+          <SelectorCurso grupos={grupos} activo={grupoActivo?.id} onCambiar={cambiarCurso} className="mb-6 lg:mb-8" />
         )}
 
         <div className="grid grid-cols-1 lg:grid-cols-3 gap-6 lg:gap-8">
 
-          {/* COLUMNA PRINCIPAL (IZQUIERDA Y CENTRO) */}
-          <div className="lg:col-span-2 space-y-8">
-
-            {/* TARJETAS DE PROGRESO POR TEMA (leídas de la base de datos) */}
+          {/* ESTUDIAR */}
+          <section aria-labelledby="titulo-estudiar" className={`lg:col-span-2 space-y-6 ${visible('estudiar')}`}>
+            <h2 id="titulo-estudiar" className="sr-only">Estudiar</h2>
             {cargandoTemas ? (
               <div className="p-6 bg-white border border-gray-200 rounded-2xl shadow-sm flex items-center justify-center min-h-[220px]">
                 <Cargando texto="Cargando tus temas..." />
@@ -271,57 +269,106 @@ export default function Dashboard() {
                   nombreCurso={variosCursos ? grupoActivo?.nombre : null}
                   onAbrir={() => navigate('/personalizar', { state: { cursoId: grupoActivo?.id } })}
                 />
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-                  {temasVisibles.map((t) => (
-                    <TopicProgressCard key={t.id} topicName={t.nombre} temaId={t.id} />
+                <div className="bg-white border border-gray-200 rounded-2xl shadow-sm overflow-hidden">
+                  <div className="px-5 py-4 border-b border-gray-100 flex items-center justify-between gap-3">
+                    <div>
+                      <h3 className="font-semibold text-gray-800">Tus temas</h3>
+                      <p className="text-xs text-gray-400">Progreso según tu última respuesta a cada pregunta · solo lo ves tú</p>
+                    </div>
+                    <span className="text-xs text-gray-400 shrink-0">{temasVisibles.length} {temasVisibles.length === 1 ? 'tema' : 'temas'}</span>
+                  </div>
+                  {errorProgreso && (
+                    <div className="px-5 py-3 bg-amber-50 text-amber-800 text-sm flex items-center justify-between gap-3">
+                      <span>No se pudo cargar tu progreso.</span>
+                      <button onClick={cargarProgreso} className="font-medium underline cursor-pointer">Reintentar</button>
+                    </div>
+                  )}
+                  {bloques.map((b) => (
+                    <div key={b.bloque || 'todos'}>
+                      {b.bloque && (
+                        <p className="px-5 pt-4 pb-1 text-xs font-semibold text-gray-400 uppercase tracking-wide">{b.bloque}</p>
+                      )}
+                      <ul className="divide-y divide-gray-100">
+                        {b.temas.map((t) => (
+                          <FilaTema key={t.id} tema={t} progreso={progresos[String(t.id)]} />
+                        ))}
+                      </ul>
+                    </div>
                   ))}
                 </div>
               </>
             )}
 
-            <Suspense fallback={<div className="bg-white border border-gray-100 rounded-3xl p-8 shadow-sm mb-8"><Cargando texto="Cargando el resumen inteligente..." /></div>}>
+            <Suspense fallback={<div className="bg-white border border-gray-100 rounded-3xl p-8 shadow-sm"><Cargando texto="Cargando el resumen inteligente..." /></div>}>
               <ResumenIA />
             </Suspense>
-          </div>
+          </section>
 
-          {/* COLUMNA LATERAL (DERECHA) */}
+          {/* COLUMNA LATERAL: REPASO Y CLASE */}
           <div className="lg:col-span-1 space-y-6">
 
-            <div className="bg-gray-900 rounded-3xl p-6 text-white shadow-xl relative overflow-hidden">
-              <div className="absolute -right-8 -top-8 w-32 h-32 bg-orange-500/20 rounded-full blur-2xl"></div>
-
-              <div className="relative z-10">
-                <div className="flex items-center gap-3 mb-2">
-                  <span className="text-3xl">🗂️</span>
-                  <h3 className="text-xl font-bold">Mazo de Repaso</h3>
+            <section aria-labelledby="titulo-repaso" className={`space-y-6 ${visible('repaso')}`}>
+              <h2 id="titulo-repaso" className="text-xs font-semibold text-gray-400 uppercase tracking-wide px-1">Tu progreso personal · solo lo ves tú</h2>
+              <div className="bg-gray-900 rounded-3xl p-6 text-white shadow-xl relative overflow-hidden">
+                <div className="absolute -right-8 -top-8 w-32 h-32 bg-orange-500/20 rounded-full blur-2xl"></div>
+                <div className="relative z-10">
+                  <div className="flex items-center gap-3 mb-2">
+                    <span className="text-3xl">🗂️</span>
+                    <h3 className="text-xl font-bold">Mazo de Repaso</h3>
+                  </div>
+                  <p className="text-gray-400 text-sm mb-6 leading-relaxed">
+                    Enfréntate a tus puntos débiles. Tus fallos se guardan aquí para que los transformes en aciertos.
+                  </p>
+                  <button
+                    onClick={() => navigate('/repaso')}
+                    className="w-full py-3 bg-orange-500 hover:bg-orange-600 text-white font-bold rounded-xl transition-colors cursor-pointer shadow-lg shadow-orange-500/20"
+                  >
+                    Entrar al repaso ➔
+                  </button>
                 </div>
-                <p className="text-gray-400 text-sm mb-6 leading-relaxed">
-                  Enfréntate a tus puntos débiles. La IA guarda tus fallos aquí para que los transformes en aciertos.
-                </p>
-                <button
-                  onClick={() => navigate('/repaso')}
-                  className="w-full py-3 bg-orange-500 hover:bg-orange-600 text-white font-bold rounded-xl transition-colors cursor-pointer shadow-lg shadow-orange-500/20"
-                >
-                  Entrar al repaso ➔
-                </button>
               </div>
-            </div>
+              <GraficoEvolucion />
+            </section>
 
-            {/* Ficha de evolución de resultados (justo debajo del Mazo de Repaso) */}
-            <GraficoEvolucion />
-
-            <RankingClase cursoId={grupoActivo?.id} />
-
-            {/* CONSEJO DEL DÍA (real, sin estadísticas inventadas) */}
-            <div className="p-6 bg-orange-500 rounded-3xl text-white shadow-lg shadow-orange-500/20">
-              <h4 className="font-bold mb-2 flex items-center gap-2">💡 Consejo del día</h4>
-              <p className="text-sm opacity-90 leading-relaxed">{consejoDelDia}</p>
-            </div>
+            <section aria-labelledby="titulo-clase" className={`space-y-6 ${visible('clase')}`}>
+              <h2 id="titulo-clase" className="text-xs font-semibold text-gray-400 uppercase tracking-wide px-1">Competición de la clase</h2>
+              <RankingClase cursoId={grupoActivo?.id} onAbrirCuenta={() => setCuentaAbierta(true)} />
+              <div className="p-6 bg-orange-500 rounded-3xl text-white shadow-lg shadow-orange-500/20">
+                <h4 className="font-bold mb-2 flex items-center gap-2">💡 Consejo del día</h4>
+                <p className="text-sm opacity-90 leading-relaxed">{consejoDelDia}</p>
+              </div>
+            </section>
 
           </div>
-
         </div>
       </div>
+
+      {/* BARRA DE NAVEGACIÓN INFERIOR (móvil y tablet) */}
+      <nav
+        aria-label="Secciones"
+        className="lg:hidden fixed bottom-0 inset-x-0 z-30 bg-white/95 backdrop-blur border-t border-gray-200"
+        style={{ paddingBottom: 'env(safe-area-inset-bottom)' }}
+      >
+        <div role="tablist" className="max-w-md mx-auto grid grid-cols-3">
+          {SECCIONES.map((s) => {
+            const activa = seccion === s.id;
+            return (
+              <button
+                key={s.id}
+                role="tab"
+                aria-selected={activa}
+                onClick={() => cambiarSeccion(s.id)}
+                className={`py-2.5 flex flex-col items-center gap-0.5 text-xs font-medium cursor-pointer transition-colors ${activa ? 'text-orange-600' : 'text-gray-500 hover:text-gray-800'}`}
+              >
+                <span className={`text-xl leading-none ${activa ? '' : 'grayscale opacity-70'}`} aria-hidden="true">{s.icono}</span>
+                {s.texto}
+              </button>
+            );
+          })}
+        </div>
+      </nav>
+
+      {cuentaAbierta && <MiCuenta onCerrar={() => setCuentaAbierta(false)} />}
     </div>
   );
 }

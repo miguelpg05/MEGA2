@@ -14,7 +14,9 @@ from datetime import datetime, timedelta
 from fastapi import APIRouter, Depends, HTTPException, UploadFile, File, Query
 from fastapi.responses import StreamingResponse
 from sqlalchemy import func, cast, Integer, or_
-from sqlalchemy.orm import Session
+from sqlalchemy.orm import Session, selectinload
+from services.rgpd import suprimir_usuario as suprimir_usuario_y_datos
+from services.pdf import extraer_texto_pdf
 
 from models import (
     get_db,
@@ -252,13 +254,18 @@ async def subir_material(
         raise HTTPException(status_code=400, detail="El archivo está vacío.")
     if len(contenido) > MAX_PDF_MB * 1024 * 1024:
         raise HTTPException(status_code=400, detail=f"El PDF supera el máximo permitido de {MAX_PDF_MB} MB.")
+    # Se comprueba el contenido, no solo la extensión: un PDF empieza por «%PDF»
+    if not contenido.lstrip()[:5].startswith(b"%PDF"):
+        raise HTTPException(status_code=400, detail="El archivo no es un PDF válido.")
 
     material = MaterialTema(
         tema_id=tema_id,
-        nombre_archivo=nombre,
-        tipo_mime=archivo.content_type or "application/pdf",
+        nombre_archivo=nombre[:255],
+        tipo_mime="application/pdf",
         tamano_bytes=len(contenido),
         contenido=contenido,
+        # Texto para la IA, extraído una sola vez ("" = PDF escaneado, sin texto)
+        texto=extraer_texto_pdf(contenido, max_chars=400000) or "",
     )
     db.add(material)
     db.commit()
@@ -805,10 +812,38 @@ def listar_usuarios(_: Usuario = Depends(require_superadmin), db: Session = Depe
             "email": u.email,
             "rol": u.rol,
             "gestionado_access": bool(u.gestionado_access),
+            "privacidad_aceptada_en": u.privacidad_aceptada_en.isoformat() if u.privacidad_aceptada_en else None,
             "cursos": [{"id": c.id, "nombre": c.nombre} for c in u.cursos],
         }
-        for u in db.query(Usuario).order_by(Usuario.id).all()
+        for u in db.query(Usuario).options(selectinload(Usuario.cursos)).order_by(Usuario.id).all()
     ]
+
+
+@router.delete("/usuarios/{usuario_id}")
+def suprimir_usuario(
+    usuario_id: int,
+    confirmar_email: str = Query(..., description="Correo del usuario, para confirmar"),
+    admin: Usuario = Depends(require_superadmin),
+    db: Session = Depends(get_db),
+):
+    """Derecho de supresión (RGPD): borra DEFINITIVAMENTE la cuenta y todo su historial
+    (intentos, respuestas, fallos, uso de IA, matrículas del Access). No se puede deshacer.
+    Exige repetir el correo del usuario para evitar borrados por error."""
+    usuario = db.query(Usuario).filter(Usuario.id == usuario_id).first()
+    if not usuario:
+        raise HTTPException(status_code=404, detail="Usuario no encontrado")
+    if usuario.id == admin.id:
+        raise HTTPException(status_code=400, detail="No puedes eliminar tu propia cuenta.")
+    if (confirmar_email or "").strip().lower() != (usuario.email or "").lower():
+        raise HTTPException(status_code=400, detail="El correo de confirmación no coincide.")
+    if usuario.rol == "superadmin" and db.query(Usuario).filter(Usuario.rol == "superadmin").count() <= 1:
+        raise HTTPException(status_code=400, detail="No se puede eliminar al último superadministrador.")
+    email = usuario.email
+    borrados = suprimir_usuario_y_datos(db, usuario)
+    print(f"RGPD: {admin.email} ha suprimido la cuenta {email} ({borrados})")
+    from routers.ranking import invalidar_cache_ranking
+    invalidar_cache_ranking()
+    return {"mensaje": f"Cuenta {email} eliminada con todo su historial.", "borrados": borrados}
 
 @router.put("/usuarios/{usuario_id}/rol")
 def cambiar_rol(

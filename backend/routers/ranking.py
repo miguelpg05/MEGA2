@@ -35,7 +35,52 @@ def _tests_del_curso(db: Session, curso_id: int) -> set:
     return {t for (t,) in filas}
 
 
+import time as _time
+_CACHE_RANKING = {}          # curso_id -> (instante, filas)
+SEGUNDOS_CACHE_RANKING = 60  # el ranking puede ir hasta 1 minuto por detrás
+
+
+def invalidar_cache_ranking(curso_id: int = None) -> None:
+    """Olvida el ranking guardado (de un curso o de todos), p. ej. si un alumno se oculta."""
+    if curso_id is None:
+        _CACHE_RANKING.clear()
+    else:
+        _CACHE_RANKING.pop(curso_id, None)
+
+
+def nombre_corto(nombre: str) -> str:
+    """«Lucía Fernández Gutiérrez» -> «Lucía F.» (lo que ven los compañeros)."""
+    partes = (nombre or "").split()
+    if not partes:
+        return "Alumno"
+    if len(partes) == 1:
+        return partes[0]
+    return f"{partes[0]} {partes[1][0].upper()}."
+
+
+def _asignar_posiciones(filas: list) -> list:
+    """Empates: misma posición (1, 2, 2, 4…). Devuelve copias."""
+    salida, posicion, anterior = [], 0, None
+    for i, f in enumerate(filas, start=1):
+        if f["puntos"] != anterior:
+            posicion, anterior = i, f["puntos"]
+        salida.append({**f, "posicion": posicion})
+    return salida
+
+
 def calcular_ranking(db: Session, curso_id: int) -> list:
+    """Versión con caché en memoria (60 s por curso): con 200 alumnos abriendo el
+    inicio a la vez se calcula una vez por minuto en lugar de 200 veces."""
+    ahora = _time.monotonic()
+    guardado = _CACHE_RANKING.get(curso_id)
+    if guardado and ahora - guardado[0] < SEGUNDOS_CACHE_RANKING:
+        return [dict(f) for f in guardado[1]]
+    filas = _calcular_ranking(db, curso_id)
+    _CACHE_RANKING[curso_id] = (ahora, filas)
+    return [dict(f) for f in filas]
+
+
+def _calcular_ranking(db: Session, curso_id: int) -> list:
     """Lista ordenada [{posicion, usuario_id, nombre, puntos, tests}] de los alumnos
     del curso con al menos un test del banco hecho. Empates: misma posición."""
     test_ids = _tests_del_curso(db, curso_id)
@@ -77,19 +122,14 @@ def calcular_ranking(db: Session, curso_id: int) -> list:
         {
             "usuario_id": uid,
             "nombre": alumnos[uid].nombre,
+            "visible": alumnos[uid].mostrar_en_ranking is not False,
             "puntos": round(sum(por_test.values())),
             "tests": len(por_test),
         }
         for uid, por_test in mejor.items() if por_test
     ]
     filas.sort(key=lambda f: (-f["puntos"], -f["tests"], (f["nombre"] or "").lower()))
-
-    posicion, anterior = 0, None
-    for i, f in enumerate(filas, start=1):
-        if f["puntos"] != anterior:
-            posicion, anterior = i, f["puntos"]
-        f["posicion"] = posicion
-    return filas
+    return _asignar_posiciones(filas)
 
 
 @router.get("/clase")
@@ -100,7 +140,9 @@ def ranking_de_la_clase(
     db: Session = Depends(get_db),
 ):
     """Top 5 del curso y la posición del propio alumno. Requiere sesión y acceso al curso.
-    Con `completo=true` (solo staff) devuelve todos los alumnos."""
+    Privacidad: los alumnos ven a los compañeros como «Lucía F.» y no ven a quien se
+    haya ocultado (`usuarios.mostrar_en_ranking`). Con `completo=true` (solo staff)
+    devuelve todos, con nombre completo y marcando quién está oculto."""
     curso = db.query(Curso).filter(Curso.id == curso_id).first()
     if not curso:
         raise HTTPException(status_code=404, detail="Curso no encontrado.")
@@ -109,22 +151,34 @@ def ranking_de_la_clase(
         raise HTTPException(status_code=403, detail="Solo el profesorado puede ver el ranking completo.")
 
     filas = calcular_ranking(db, curso_id)
-    yo: Optional[dict] = next((f for f in filas if f["usuario_id"] == usuario.id), None)
-    lideres = filas if completo else filas[:TOP_ALUMNOS]
+    oculto = usuario.mostrar_en_ranking is False
+    if completo:
+        lista, lideres = filas, filas
+    else:
+        # Los alumnos ocultos no aparecen (ni cuentan para las posiciones de los demás)
+        lista = _asignar_posiciones([f for f in filas if f["visible"]])
+        lideres = lista[:TOP_ALUMNOS]
+    yo: Optional[dict] = next((f for f in lista if f["usuario_id"] == usuario.id), None)
 
     def publico(f):
-        return {
+        es_yo = f["usuario_id"] == usuario.id
+        fila = {
             "posicion": f["posicion"],
-            "nombre": f["nombre"],
+            "nombre": f["nombre"] if (completo or es_yo) else nombre_corto(f["nombre"]),
             "puntos": f["puntos"],
             "tests": f["tests"],
-            "soy_yo": f["usuario_id"] == usuario.id,
+            "soy_yo": es_yo,
         }
+        if completo:
+            fila["oculto"] = not f["visible"]
+        return fila
 
     return {
         "curso_id": curso.id,
         "curso": curso.nombre,
-        "participantes": len(filas),
+        "participantes": len(lista),
         "lideres": [publico(f) for f in lideres],
         "yo": publico(yo) if yo else None,
+        "oculto": oculto,
+        "actualizado_cada_segundos": SEGUNDOS_CACHE_RANKING,
     }

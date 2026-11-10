@@ -4,7 +4,7 @@ import { Cargando, MensajeError } from './Estado';
 
 // Ranking del curso activo: top 5 y, si el alumno no está entre ellos, su puesto.
 // Puntos = suma del mejor % de aciertos de cada test del banco (máx. 100 por test).
-export default function RankingClase({ cursoId }) {
+export default function RankingClase({ cursoId, onAbrirCuenta }) {
   const valido = cursoId !== null && cursoId !== undefined && cursoId !== '' && Number.isInteger(Number(cursoId));
   // Resultado de la última carga: { clave, datos, error }. "Cargando" = aún no hay
   // resultado para el curso (y nº de intento) actual.
@@ -54,11 +54,17 @@ export default function RankingClase({ cursoId }) {
               )}
             </ol>
           )}
-          {!datos.yo && datos.lideres.length > 0 && (
+          {datos.oculto ? (
+            <p className="text-xs text-gray-500 bg-gray-50 rounded-lg px-3 py-2 mt-3">
+              Estás oculto: tus compañeros no te ven en el ranking.
+              {onAbrirCuenta && <button onClick={onAbrirCuenta} className="ml-1 text-orange-600 hover:underline cursor-pointer">Cambiar</button>}
+            </p>
+          ) : !datos.yo && datos.lideres.length > 0 && (
             <p className="text-xs text-gray-400 mt-3">Haz un test del banco para entrar en el ranking.</p>
           )}
           <p className="text-[11px] text-gray-400 mt-4 leading-snug">
             Puntos: suma del mejor % de aciertos de cada test del banco (máx. 100 por test). Los tests personalizados no cuentan.
+            Se actualiza cada minuto. Tus compañeros te ven con tu nombre y la inicial del apellido.
           </p>
         </>
       )}

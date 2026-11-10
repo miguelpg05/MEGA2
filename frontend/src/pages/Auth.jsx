@@ -4,6 +4,7 @@ import { apiFetch } from '../api';
 import { GOOGLE_CLIENT_ID } from '../config';
 import { useAuth } from '../auth/AuthContext';
 import { useTituloPagina } from '../utils/titulo';
+import EnlacePrivacidad from '../components/EnlacePrivacidad';
 
 export default function Auth() {
   useTituloPagina('Iniciar sesión');
@@ -235,6 +236,10 @@ export default function Auth() {
             {esLogin ? 'Regístrate aquí' : 'Inicia sesión'}
           </button>
         </div>
+
+        <p className="mt-6 text-center text-xs text-gray-400">
+          <EnlacePrivacidad className="text-gray-400 hover:text-orange-600">Política de privacidad</EnlacePrivacidad>
+        </p>
 
       </div>
     </div>

@@ -126,8 +126,13 @@ def descargar_material(
 
     # Saneamos el nombre para la cabecera (sin comillas ni saltos de línea)
     nombre = material.nombre_archivo.replace('"', "").replace("\n", "").replace("\r", "")
+    # Siempre como PDF (nunca el tipo que dijo quien lo subió) y sin "adivinar" tipos
+    from urllib.parse import quote
     return Response(
         content=material.contenido,
-        media_type=material.tipo_mime or "application/pdf",
-        headers={"Content-Disposition": f'inline; filename="{nombre}"'},
+        media_type="application/pdf",
+        headers={
+            "Content-Disposition": f"inline; filename*=UTF-8''{quote(nombre)}",
+            "X-Content-Type-Options": "nosniff",
+        },
     )

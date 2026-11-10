@@ -15,3 +15,11 @@ def _reiniciar_limites():
     limiter.reset()
     intentos_login.limpiar()
     yield
+
+
+@pytest.fixture(autouse=True)
+def _vaciar_cache_ranking():
+    """El ranking se cachea 60 s en memoria: cada test empieza sin caché."""
+    from routers.ranking import invalidar_cache_ranking
+    invalidar_cache_ranking()
+    yield

@@ -126,7 +126,7 @@ export default function TestListado() {
                   <span className="font-bold text-lg">{test.fallos_ultimo === null ? '-' : test.fallos_ultimo}</span>
                 </td>
                 
-                <td className="px-4 py-3 font-medium text-sm text-center">{test.realizado_veces} veces</td>
+                <td className="px-4 py-3 font-medium text-sm text-center">{test.realizado_veces === 1 ? "1 vez" : `${test.realizado_veces ?? 0} veces`}</td>
                 <td className="px-4 py-3 text-sm text-center">{formatearFecha(test.ultimo_fecha)}</td>
                 
                 <td className="px-4 py-3 text-center">

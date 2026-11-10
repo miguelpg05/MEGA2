@@ -1,5 +1,5 @@
 
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 from typing import List, Optional
 
 # (Los resultados de un test ya no los envía el frontend corregidos: se corrigen
@@ -7,18 +7,19 @@ from typing import List, Optional
 
 # --- ESQUEMAS PARA AUTENTICACIÓN ---
 
+# Longitudes máximas: evitan cuerpos enormes (memoria) y datos absurdos.
 class UsuarioRegistro(BaseModel):
-    nombre: str
-    email: str
-    password: str
+    nombre: str = Field(min_length=1, max_length=120)
+    email: str = Field(max_length=254)
+    password: str = Field(max_length=128)
 
 class UsuarioLogin(BaseModel):
-    email: str
-    password: str
+    email: str = Field(max_length=254)
+    password: str = Field(max_length=128)
 
 class GoogleLogin(BaseModel):
-    access_token: Optional[str] = None  # OAuth2 access token (flujo con selector de cuenta)
-    credential: Optional[str] = None    # id_token (flujo antiguo, por compatibilidad)
+    access_token: Optional[str] = Field(default=None, max_length=4096)  # OAuth2 access token
+    credential: Optional[str] = Field(default=None, max_length=8192)    # id_token (flujo antiguo)
 
 class Token(BaseModel):
     access_token: str
@@ -36,6 +37,10 @@ class UsuarioActual(BaseModel):
     email: str
     rol: str
     cursos: List[CursoResumen] = []
+    # RGPD
+    debe_aceptar_privacidad: bool = False
+    privacidad_version: Optional[str] = None
+    mostrar_en_ranking: bool = True
 
 # --- ESQUEMAS DE PETICIÓN PARA LOS ENDPOINTS DE main.py ---
 
@@ -43,14 +48,14 @@ class FalloRequest(BaseModel):
     pregunta_id: int
 
 class ResumenRequest(BaseModel):
-    tiempo: int
-    nivel: str
-    tema: str  # etiqueta/título para el prompt
-    tema_nombre: Optional[str] = None
+    tiempo: int = Field(ge=1, le=120)
+    nivel: str = Field(max_length=30)
+    tema: str = Field(default="", max_length=2000)  # etiqueta/título para el prompt
+    tema_nombre: Optional[str] = Field(default=None, max_length=300)
     tema_id: Optional[int] = None
-    tema_ids: Optional[List[int]] = None  # varios temas: usa TODOS sus materiales (PDFs)
+    tema_ids: Optional[List[int]] = Field(default=None, max_length=100)  # varios temas: usa sus PDFs
     material_id: Optional[int] = None     # un PDF concreto sobre el que basar el resumen
-    texto: Optional[str] = None           # texto libre aportado por el usuario
+    texto: Optional[str] = Field(default=None, max_length=60_000)  # texto libre del usuario
 
 
 class RepasoCompletado(BaseModel):
@@ -60,33 +65,37 @@ class RepasoCompletado(BaseModel):
 # --- ESQUEMAS DEL PANEL DE ADMINISTRACIÓN ---
 
 class CursoIn(BaseModel):
-    nombre: str
-    descripcion: Optional[str] = None
+    nombre: str = Field(min_length=1, max_length=200)
+    descripcion: Optional[str] = Field(default=None, max_length=1000)
 
 class CursosUsuarioUpdate(BaseModel):
-    curso_ids: List[int]
+    curso_ids: List[int] = Field(max_length=200)
 
 class TemaIn(BaseModel):
-    nombre: str
-    bloque: Optional[str] = None
+    nombre: str = Field(min_length=1, max_length=300)
+    bloque: Optional[str] = Field(default=None, max_length=200)
     curso_id: Optional[int] = None
 
 class TestPlantillaIn(BaseModel):
-    numero_test: str                      # nombre del test: admite cualquier texto
-    tema_ids: Optional[List[int]] = None  # uno o VARIOS temas (el primero es el principal)
+    numero_test: str = Field(min_length=1, max_length=200)  # nombre del test: cualquier texto
+    tema_ids: Optional[List[int]] = Field(default=None, max_length=200)  # uno o VARIOS temas
     tema_id: Optional[int] = None         # compatibilidad: un único tema
     total_preguntas: int = 10
 
 class PreguntaIn(BaseModel):
-    enunciado: str
-    opcion_a: str
-    opcion_b: str
-    opcion_c: str
-    opcion_d: str
-    respuesta_correcta: str  # letra A-D
-    explicacion: Optional[str] = None
+    enunciado: str = Field(min_length=1, max_length=4000)
+    opcion_a: str = Field(max_length=1000)
+    opcion_b: str = Field(max_length=1000)
+    opcion_c: str = Field(max_length=1000)
+    opcion_d: str = Field(max_length=1000)
+    respuesta_correcta: str = Field(max_length=20)  # letras A-D ("A" o "AC")
+    explicacion: Optional[str] = Field(default=None, max_length=8000)
     tema_id: int
     test_plantilla_id: Optional[int] = None
 
 class RolUpdate(BaseModel):
-    rol: str  # "estudiante" | "admin" (profesor) | "superadmin" (jefe)
+    rol: str = Field(max_length=20)  # "estudiante" | "admin" (profesor) | "superadmin" (jefe)
+
+
+class RankingVisible(BaseModel):
+    visible: bool

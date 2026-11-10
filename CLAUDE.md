@@ -31,16 +31,16 @@ backend/
     temas.py              # Temas visibles del usuario (con nº de preguntas) y sus materiales
     admin.py              # Panel admin: CRUD temas/tests/preguntas, importación, métricas, roles, ranking
   seed.py                 # Datos demo (idempotente); se ejecuta a mano, no en el arranque
-  alembic/                # Migraciones 0001–0008 (0006: tests multi-tema; 0007: sincronización Access; 0008: índice registro_fallos)
+  alembic/                # Migraciones 0001–0009 (0006: tests multi-tema; 0007: sincronización Access; 0008: índice registro_fallos; 0009: RGPD, índices y texto de PDFs)
   inyectar_preguntas.py   # Script para cargar preguntas desde preguntas.xlsx
-  services/               # preguntas.py, tests_util.py (nombres/orden de tests), pdf.py, ia.py
+  services/               # preguntas.py, tests_util.py (nombres/orden de tests), pdf.py, ia.py, rgpd.py (privacidad, exportar y suprimir datos)
   requirements.txt
 frontend/
   src/
     config.js             # API_BASE_URL y GOOGLE_CLIENT_ID (leen de import.meta.env)
     api.js                # apiFetch: añade Bearer y gestiona 401 (sesión en otro dispositivo)
-    pages/                # Auth, Dashboard, Test, TestListado, PersonalizarTest, Repaso, MaterialTema, Admin, NoEncontrada (404)
-    components/           # IndicadorProgreso, RankingClase, ResumenIA, SelectorCurso, GraficoEvolucion, Estado
+    pages/                # Auth, Dashboard, Test, TestListado, PersonalizarTest, Repaso, MaterialTema, Admin, Privacidad (borrador), NoEncontrada (404)
+    components/           # RankingClase, ResumenIA, SelectorCurso, GraficoEvolucion, Estado, MiCuenta, AvisoPrivacidad, EnlacePrivacidad
     utils/cursos.js       # Agrupar temas por curso y recordar el curso activo
     utils/titulo.js       # useTituloPagina: «Pantalla · Academia MEGA» en la pestaña
     utils/cargaDiferida.js # React.lazy que recarga 1 vez si falta un chunk tras un despliegue
@@ -94,10 +94,14 @@ npm run lint
 - `CUENTAS_PRUEBA_EMAILS` — alumnos de prueba que pueden entrar con contraseña (por defecto `estudiante@academiamega.net`).
 - `LIMITE_LOGIN` / `LIMITE_REGISTRO` / `LIMITE_GOOGLE` / `LIMITE_IA` — opcionales, formato slowapi (por defecto `20/minute`, `5/minute`, `30/minute`, `5/minute;40/day`). `LIMITES_ACTIVOS=0` los desactiva. Ver `services/limites.py`.
 - `SENTRY_DSN` — opcional; si se define, activa la monitorización de errores con Sentry.
+- `CORS_ORIGENES_EXTRA` — orígenes extra permitidos (comas). Por defecto solo `https://mega-2-rho.vercel.app` y `localhost:5173`: **las URLs de preview de Vercel ya no pueden llamar a la API**.
+- `VERSION_PRIVACIDAD` — versión vigente de la política (por defecto `2026-11`). Cambiarla obliga a todos a aceptarla de nuevo.
+- `MAX_PDF_MB` — tamaño máximo por PDF (10). Las peticiones mayores de `MAX_PDF_MB`+2 MB se rechazan con 413.
 
 **Frontend** (`frontend/.env`; en Vercel como Environment Variables):
 - `VITE_API_URL` — URL del backend en Render.
 - `VITE_GOOGLE_CLIENT_ID`
+- `VITE_URL_PRIVACIDAD` — opcional: URL de la política de privacidad publicada por la academia (si no, `/privacidad`).
 
 Existen `.env.example` en ambas carpetas: manténlos actualizados cuando añadas variables.
 
@@ -110,7 +114,7 @@ Existen `.env.example` en ambas carpetas: manténlos actualizados cuando añadas
 | **Responsive** | 🟡 Parcial | `viewport` OK y hay breakpoints `md:`/`lg:` en Dashboard. Falta auditar TestListado y el botón de Google (ancho fijo `336`). |
 | **Sesión única por usuario** | 🟢 Implementado | Columna `usuarios.sesion_id` + claim `sid` en el JWT; cada login regenera el `sesion_id` e invalida el resto. El front detecta el 401 y redirige con aviso. |
 | **Login Google solo @academiamega.net** | 🟢 Implementado (+ email/contraseña) | Google: OAuth2 con `prompt=select_account` (sin auto-login) + `hosted_domain`; backend valida el `access_token` con `tokeninfo`. Coexiste con email+contraseña (también restringido al dominio). Requiere `GOOGLE_CLIENT_ID` en ambos lados. |
-| **Soportar 200 concurrentes** | 🔴 Pendiente | Requiere: Neon pooled connection, pool de SQLAlchemy, workers de uvicorn/gunicorn, plan de pago en Render (el free hiberna), quitar el seed/ALTER de cada arranque. |
+| **Soportar 200 concurrentes** | 🟢 Probado | Prueba de carga (nov. 2026, 1 proceso): 200 alumnos abriendo el inicio a la vez → 0 errores, p50 ≈ 3 s; 200 entregas de examen → 0 errores, p50 ≈ 2,3 s. Render de pago (0,5 CPU). Más CPU/workers lo bajaría. |
 
 ---
 
@@ -135,6 +139,8 @@ Todo el temario cuelga de un **`Curso`**. La tabla intermedia `usuario_cursos` (
 - **Modalidades** (frontend `pages/Test.jsx`, scroll vertical continuo): *Práctica* corrige al marcar (varias correctas → botón Comprobar) y guarda con "Finalizar y guardar nota"; *Examen* no muestra correcciones hasta entregar, entonces muestra nota /10 + corrección completa y guarda automáticamente. Las no respondidas cuentan como fallo. **Entrega**: el front solo envía las opciones marcadas (letras) a `POST /api/test/entregar`; el servidor corrige y guarda en UNA transacción intento + respuestas (progreso) + fallos (repaso, sin duplicar pendientes). `/api/test/generar` comprueba que el test sea de un curso del alumno. **Salir a medias**: `Test.jsx` pide confirmación al pulsar «Salir» con el test empezado o con la nota sin guardar, y avisa al recargar/cerrar la pestaña (`beforeunload`). Se retiraron `/api/ranking/guardar`, `/api/progreso/guardar-resultados` y `/api/test/registrar-intento` (se fiaban de lo que mandaba el navegador). Si el guardado falla, la pantalla lo dice y permite reintentar (`apiFetch(..., { reintentar: false })` para no duplicar). **Tiempo**: Práctica no muestra reloj; Examen muestra un cronómetro ascendente (tiempo transcurrido, y «Tiempo empleado» en el resultado). Solo un test personalizado con tiempo elegido usa cuenta atrás y se entrega solo al agotarse (la antigua cuenta atrás fija de 2 min del banco se eliminó en nov. 2026).
 - **Personaliza tu test** (`/personalizar`): temas de un curso + nº de preguntas (máx. 200) + tiempo (o sin límite; si hay límite, al agotarse se entrega solo) + modalidad. Cuenta para progreso, repaso y evolución (no para el ranking). `test_intentos` guarda `total_preguntas`, `modo` y `personalizado` (sin plantilla).
 - **Ranking por curso** (`routers/ranking.py`, `GET /api/ranking/clase?curso_id=…`, requiere sesión y acceso al curso): puntos = suma del **mejor % de aciertos de cada test del banco** del curso (0-100 por test); los personalizados no cuentan y solo aparecen alumnos (rol `estudiante`). Se calcula al vuelo desde `test_intentos` (la tabla `puntuaciones` ya no se usa). El alumno ve el top 5 y su puesto (`components/RankingClase.jsx`); el profesorado ve la lista completa (`completo=true`) en la pestaña Ranking del panel.
+- **Progreso por tema** (`routers/progreso.py`): % de aciertos según la **última respuesta a cada pregunta** (sube al corregir un fallo). `GET /api/progreso/temas` devuelve todos los temas en una petición (`{tema_id: indicador}`; sin respuestas = no aparece = 0 %); el inicio usa solo esta.
+- **Privacidad del ranking**: los alumnos ven a los compañeros como «Nombre I.» (`nombre_corto`) y no ven a quien tenga `usuarios.mostrar_en_ranking = false` (se oculta desde «Mi cuenta», `PUT /api/auth/ranking`). El staff (`completo=true`) ve nombres completos y quién está oculto. El ranking se cachea 60 s por curso en memoria (`invalidar_cache_ranking`); si hubiera varias instancias, cada una tendría su caché.
 - **Repaso** (`/api/repaso/pendientes`): una carta por pregunta (con `veces` = fallos pendientes) en una sola consulta; `/api/repaso/completar` recibe `pregunta_id` y marca todos sus fallos pendientes.
 - **Varios cursos**: el Dashboard muestra pestañas de curso si el alumno tiene más de uno (se recuerda el último en `localStorage`).
 - **Driver de BD**: `models.normalizar_url_bd` fuerza `postgresql+psycopg2://` porque SQLAlchemy 2.1 usa psycopg 3 por defecto y no está instalado.
@@ -147,6 +153,16 @@ Todo el temario cuelga de un **`Curso`**. La tabla intermedia `usuario_cursos` (
 - **Reglas**: el Access manda (bajas de curso incluidas; quien desaparece se queda sin cursos pero conserva cuenta e historial). Un alumno con alguna fila errónea conserva además sus cursos anteriores. Profesores/admins y alumnos ajenos al Access (demo) nunca se tocan. El DNI no se guarda.
 - **Al iniciar sesión con Google** `services/matriculas.aplicar_matriculas_usuario` asigna los cursos y el nombre del Access.
 - **Nombres de curso**: se comparan sin tildes ni mayúsculas; deben coincidir con los de la plataforma (si en el futuro no coinciden, añadir una tabla de equivalencias).
+
+## 5e. RGPD y seguridad (nov. 2026)
+
+- **Aceptación de la política**: `/api/auth/me` devuelve `debe_aceptar_privacidad`; el front muestra `AvisoPrivacidad` (bloqueante) hasta `POST /api/auth/privacidad/aceptar`, que guarda fecha y `VERSION_PRIVACIDAD`. `pages/Privacidad.jsx` es un **borrador** con datos entre corchetes: la academia debe revisarlo con su asesor legal.
+- **Acceso/portabilidad**: `GET /api/auth/mis-datos` (JSON descargable desde «Mi cuenta»).
+- **Supresión**: solo el superadmin, `DELETE /api/admin/usuarios/{id}?confirmar_email=…` (hay que escribir el correo; no puede borrarse a sí mismo ni al último superadmin). Borra respuestas, fallos, intentos, uso de IA, matrículas del Access y el usuario (`services/rgpd.suprimir_usuario`). Si el alumno sigue en el Access, se le volverá a matricular al entrar.
+- **Conexiones a BD**: `get_current_user` hace `commit` al terminar (`_liberar_conexion`) para no retener la conexión mientras espera el endpoint; sin esto, con 200 usuarios a la vez el pool se agotaba (errores 500). No quitarlo.
+- **Cabeceras y límites** (`main.py`): HSTS, nosniff, `X-Frame-Options: DENY`, `Referrer-Policy`; 413 por tamaño; CORS cerrado (`allow_credentials=False`, sin regex); `exigir_tls` añade `sslmode=require` a BD remotas. Los esquemas Pydantic limitan longitudes. Los PDF se validan por cabecera `%PDF` y se sirven siempre como `application/pdf`.
+- **Texto de los PDF**: `materiales_tema.texto` se extrae al subir (o la primera vez que se resume) y se reutiliza; `""` = PDF escaneado sin texto.
+- **Inicio (UX)**: en el móvil, barra inferior Estudiar / Repaso / Clase (una sección cada vez); en escritorio se ve todo, separando «Tu progreso personal · solo lo ves tú» y «Competición de la clase». Temas en lista compacta agrupada por bloque.
 
 ## 6. Convenciones de código
 
@@ -215,6 +231,8 @@ Todo el temario cuelga de un **`Curso`**. La tabla intermedia `usuario_cursos` (
 
 **Al desplegar esta fase** (BD de Neon ya existente): ejecutar `alembic upgrade head` para aplicar la migración `0002` (columna `rol` + tabla `ia_llamadas`), y definir `ADMIN_EMAILS` con tu correo para tener el primer administrador.
 
+**Actualización nov. 2026 (2)**: aplicar la `0009` (RGPD, índices, texto de PDFs) pegando el contenido de `sql_neon/0009_rgpd_indices_texto_pdf.sql` en el SQL Editor de Neon.
+
 **Actualización nov. 2026**: aplicar la `0008` (índice). Sin Python local, pegar `sql_neon/0008_indice_registro_fallos.sql` en el SQL Editor de Neon.
 
 **Actualización oct. 2026**: aplicar la `0007` (sincronización con el Access). Sin Python local, pegar `sql_neon/0007_sincronizacion_access.sql` en el SQL Editor de Neon.
@@ -228,7 +246,7 @@ Todo el temario cuelga de un **`Curso`**. La tabla intermedia `usuario_cursos` (
 - **Frontend → Vercel**: build `npm run build`, variables `VITE_*` en el panel. Cada push a `main` despliega.
 - **Backend → Render**: start command tipo `gunicorn main:app -k uvicorn.workers.UvicornWorker` (o `uvicorn main:app` en desarrollo), variables de entorno en el panel. Hoy no hay `Procfile`/`render.yaml` — considerar añadirlo.
 - **DB → Neon**: usar la cadena **pooled** en `DATABASE_URL`.
-- **CORS** (`main.py`): la lista `allow_origins` está hardcodeada con el dominio de Vercel y localhost. Al cambiar de dominio, actualizarla.
+- **CORS** (`main.py`): `ORIGENES_PERMITIDOS` = dominio de producción de Vercel + localhost:5173 + `CORS_ORIGENES_EXTRA`. Al cambiar de dominio, añadirlo a esa variable en Render.
 
 ---
 

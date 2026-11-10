@@ -1,6 +1,6 @@
 import os
 from dotenv import load_dotenv
-from sqlalchemy import create_engine, Column, Integer, String, Boolean, ForeignKey, DateTime, Table, LargeBinary, UniqueConstraint, false
+from sqlalchemy import create_engine, Column, Integer, String, Boolean, ForeignKey, DateTime, Table, LargeBinary, UniqueConstraint, Index, Text, false, true
 from sqlalchemy.orm import declarative_base, relationship, sessionmaker
 from datetime import datetime
 
@@ -18,8 +18,20 @@ def normalizar_url_bd(url: str) -> str:
     instalado: sin esto el backend no arrancaría tras un despliegue limpio."""
     for prefijo in ("postgresql://", "postgres://"):
         if url.startswith(prefijo):
-            return "postgresql+psycopg2://" + url[len(prefijo):]
-    return url
+            url = "postgresql+psycopg2://" + url[len(prefijo):]
+            break
+    return exigir_tls(url)
+
+
+def exigir_tls(url: str) -> str:
+    """Conexiones a un PostgreSQL remoto (Neon) siempre cifradas: añade
+    sslmode=require si la URL no indica ningún sslmode. Local (localhost) no se toca."""
+    if not url.startswith("postgresql") or "sslmode=" in url:
+        return url
+    host = url.split("@")[-1].split("/")[0].split(":")[0]
+    if host in ("localhost", "127.0.0.1", "") or url.split("?")[0].endswith("@"):
+        return url
+    return url + ("&" if "?" in url else "?") + "sslmode=require"
 
 SQLALCHEMY_DATABASE_URL = normalizar_url_bd(SQLALCHEMY_DATABASE_URL)
 
@@ -103,6 +115,9 @@ class MaterialTema(Base):
     tamano_bytes = Column(Integer, nullable=True)
     contenido = Column(LargeBinary, nullable=False)
     fecha_subida = Column(DateTime, default=datetime.utcnow)
+    # Texto extraído del PDF (se guarda al subirlo o la primera vez que se resume),
+    # para no volver a procesar el PDF en cada resumen. Migración 0009.
+    texto = Column(Text, nullable=True)
 
     tema = relationship("Tema", back_populates="materiales")
 
@@ -124,8 +139,8 @@ class Pregunta(Base):
     explicacion = Column(String)
     
     # Relación con el tema al que pertenece
-    tema_id = Column(Integer, ForeignKey("temas.id"))
-    test_plantilla_id = Column(Integer, ForeignKey("test_plantillas.id", ondelete="CASCADE"), nullable=True)
+    tema_id = Column(Integer, ForeignKey("temas.id"), index=True)
+    test_plantilla_id = Column(Integer, ForeignKey("test_plantillas.id", ondelete="CASCADE"), nullable=True, index=True)
     tema = relationship("Tema", back_populates="preguntas")
 
 # 3. Tabla de Fallos (Para el Modo Repaso Automático y Flashcards)
@@ -153,8 +168,11 @@ class RespuestaAlumno(Base):
 
     id = Column(Integer, primary_key=True, index=True)
     alumno_id = Column(Integer, index=True)
-    pregunta_id = Column(Integer, ForeignKey("preguntas.id"))
+    pregunta_id = Column(Integer, ForeignKey("preguntas.id"), index=True)
     es_correcta = Column(Boolean, default=False)
+
+    # Progreso por tema (última respuesta de cada pregunta del alumno). Migración 0009.
+    __table_args__ = (Index("ix_respuestas_alumno_pregunta", "alumno_id", "pregunta_id"),)
 
 # 6. Tabla de Usuarios (Login por Google)
 class Usuario(Base):
@@ -172,6 +190,12 @@ class Usuario(Base):
     # True cuando sus cursos los controla la sincronización con el Access de la
     # academia: entonces sus matrículas reflejan siempre lo que diga el Access.
     gestionado_access = Column(Boolean, nullable=False, default=False, server_default=false())
+
+    # RGPD (migración 0009): cuándo y qué versión de la política de privacidad aceptó,
+    # y si quiere aparecer en el ranking de la clase.
+    privacidad_aceptada_en = Column(DateTime, nullable=True)
+    privacidad_version = Column(String(20), nullable=True)
+    mostrar_en_ranking = Column(Boolean, nullable=False, default=True, server_default=true())
 
     # Cursos que gestiona (si es admin) o en los que está matriculado (si es estudiante)
     cursos = relationship("Curso", secondary=usuario_cursos, backref="usuarios")

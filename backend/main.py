@@ -5,7 +5,7 @@ from contextlib import asynccontextmanager
 from fastapi import FastAPI, Depends, HTTPException, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
-from sqlalchemy.orm import Session
+from sqlalchemy.orm import Session, defer
 
 # Modelos, routers y utilidades
 from models import get_db, Pregunta, RegistroFallo, Usuario, IALlamada, Tema, MaterialTema
@@ -82,18 +82,42 @@ async def capturar_errores_no_controlados(request: Request, call_next):
         )
 
 
+# Tope de tamaño por petición (PDF de hasta MAX_PDF_MB + margen). Evita que un cuerpo
+# enorme agote la memoria del servidor.
+MAX_PETICION_BYTES = (int(os.getenv("MAX_PDF_MB", "10")) + 2) * 1024 * 1024
+
+
+@app.middleware("http")
+async def limitar_tamano_y_cabeceras_seguridad(request: Request, call_next):
+    try:
+        longitud = int(request.headers.get("content-length") or 0)
+    except ValueError:
+        longitud = 0
+    if longitud > MAX_PETICION_BYTES:
+        return JSONResponse(status_code=413, content={"detail": "El archivo o la petición es demasiado grande."})
+    respuesta = await call_next(request)
+    # Cabeceras de seguridad (el HTTPS lo ponen Render y Vercel)
+    respuesta.headers.setdefault("Strict-Transport-Security", "max-age=63072000; includeSubDomains")
+    respuesta.headers.setdefault("X-Content-Type-Options", "nosniff")
+    respuesta.headers.setdefault("Referrer-Policy", "strict-origin-when-cross-origin")
+    respuesta.headers.setdefault("X-Frame-Options", "DENY")
+    return respuesta
+
+
+# Orígenes que pueden llamar a la API: solo el frontend de producción y el local.
+# (Ya no se acepta cualquier *.vercel.app que empiece por «mega-2»: cualquiera podía
+# crear un proyecto con ese nombre.) Para añadir otro dominio sin tocar código, por
+# ejemplo el subdominio de la academia: CORS_ORIGENES_EXTRA=https://plataforma.academiamega.net
+ORIGENES_PERMITIDOS = [
+    "https://mega-2-rho.vercel.app",     # Frontend de MEGA2 (producción)
+    "http://localhost:5173",             # Desarrollo local
+    "http://127.0.0.1:5173",
+] + [o.strip() for o in os.getenv("CORS_ORIGENES_EXTRA", "").split(",") if o.strip()]
+
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=[
-        "https://mega-2-rho.vercel.app",     # Frontend de MEGA2 (producción)
-        "https://web-mega-flax.vercel.app",  # Proyecto Vercel antiguo (por compatibilidad)
-        "http://localhost:5173",             # Desarrollo local
-        "http://127.0.0.1:5173",
-    ],
-    # Permite también las URLs de "preview" de Vercel del proyecto MEGA2
-    # (p. ej. mega-2-git-rama-usuario.vercel.app) sin tener que listarlas una a una.
-    allow_origin_regex=r"https://mega-2[-a-z0-9]*\.vercel\.app",
-    allow_credentials=True,
+    allow_origins=ORIGENES_PERMITIDOS,
+    allow_credentials=False,   # la sesión viaja en la cabecera Authorization, no en cookies
     allow_methods=["*"],
     allow_headers=["*"],
     # El frontend lee el motivo de un 401 para mostrar el aviso adecuado en el login
@@ -276,6 +300,15 @@ SIN_MATERIAL = ("Los temas seleccionados no tienen PDFs con texto. El resumen so
                 "del material de la academia: pide que suban el PDF del tema o pega tú el texto.")
 
 
+def _texto_material(db: Session, material: MaterialTema) -> str:
+    """Texto del PDF guardado al subirlo. Los PDF subidos antes de la migración 0009
+    no lo tienen: se extrae la primera vez y se guarda ("" = PDF sin texto)."""
+    if material.texto is None:
+        material.texto = extraer_texto_pdf(material.contenido, max_chars=400000) or ""
+        db.commit()
+    return material.texto
+
+
 def _contenido_fuente(datos, usuario: Usuario, db: Session):
     """Devuelve (texto, descripcion_fuente, documentos, recortado) según lo elegido:
     texto libre, un PDF concreto o los PDFs de varios temas. Si no hay material
@@ -291,7 +324,7 @@ def _contenido_fuente(datos, usuario: Usuario, db: Session):
         tema = db.query(Tema).filter(Tema.id == material.tema_id).first()
         if not _tema_accesible_para(usuario, tema):
             raise HTTPException(status_code=403, detail="No tienes acceso a este material.")
-        texto = extraer_texto_pdf(material.contenido, max_chars=400000)
+        texto = _texto_material(db, material)
         if not texto:
             raise HTTPException(status_code=400, detail="No se pudo extraer texto de ese PDF (puede ser escaneado/imagen).")
         texto, recortado = recortar_repartido(texto, TOPE_CONTENIDO_IA)
@@ -304,8 +337,10 @@ def _contenido_fuente(datos, usuario: Usuario, db: Session):
         tema = db.query(Tema).filter(Tema.id == tid).first()
         if not tema or not _tema_accesible_para(usuario, tema):
             continue
-        for material in tema.materiales:
-            texto_pdf = extraer_texto_pdf(material.contenido, max_chars=400000)
+        materiales = (db.query(MaterialTema).options(defer(MaterialTema.contenido))
+                      .filter(MaterialTema.tema_id == tema.id).order_by(MaterialTema.id).all())
+        for material in materiales:
+            texto_pdf = _texto_material(db, material)
             if texto_pdf:
                 documentos.append((f"{tema.nombre} · {material.nombre_archivo}", texto_pdf))
     contenido, recortado = combinar_materiales(documentos, TOPE_CONTENIDO_IA)

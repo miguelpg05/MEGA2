@@ -830,6 +830,10 @@ function UsuariosSection() {
   const [cargando, setCargando] = useState(true);
   const [error, setError] = useState(false);
   const [aviso, setAviso] = useState('');
+  const [borrando, setBorrando] = useState(null);   // usuario cuya eliminación se confirma
+  const [emailConfirmacion, setEmailConfirmacion] = useState('');
+  const [filtro, setFiltro] = useState('');
+  const { usuario: yo } = useAuth();
 
   const cargar = useCallback(() => {
     Promise.all([apiJson('/api/admin/usuarios'), apiJson('/api/admin/cursos')])
@@ -852,8 +856,28 @@ function UsuariosSection() {
     catch (err) { setAviso(err.message); }
   };
 
+  // RGPD: supresión definitiva de la cuenta y su historial
+  const suprimir = async () => {
+    setAviso('');
+    try {
+      const res = await apiJson(
+        `/api/admin/usuarios/${borrando.id}?confirmar_email=${encodeURIComponent(emailConfirmacion.trim())}`,
+        { method: 'DELETE' },
+      );
+      setBorrando(null);
+      setEmailConfirmacion('');
+      setAviso(res.mensaje);
+      cargar();
+    } catch (err) { setAviso(err.message); }
+  };
+
   if (cargando) return <Cargando texto="Cargando usuarios..." className="py-12" />;
   if (error) return <MensajeError texto="No se pudieron cargar los usuarios." onReintentar={reintentar} />;
+
+  const texto = filtro.trim().toLowerCase();
+  const visibles = texto
+    ? usuarios.filter((u) => `${u.nombre} ${u.email}`.toLowerCase().includes(texto))
+    : usuarios;
 
   return (
     <div className="space-y-4">
@@ -863,10 +887,43 @@ function UsuariosSection() {
         Los alumnos marcados como <strong>Access</strong> reciben sus cursos de la sincronización: un cambio manual aquí se
         sustituirá en la siguiente sincronización o cuando vuelvan a entrar.
       </p>
-      {aviso && <p className="text-sm text-red-600">{aviso}</p>}
+      {aviso && <p role="status" className="text-sm text-gray-700 bg-gray-50 border border-gray-200 rounded-xl px-4 py-2">{aviso}</p>}
+
+      <input type="search" value={filtro} onChange={(e) => setFiltro(e.target.value)}
+        placeholder="Buscar por nombre o correo…" aria-label="Buscar usuarios"
+        className="w-full px-4 py-2 rounded-xl bg-white border border-gray-200 text-sm outline-none focus:ring-2 focus:ring-orange-500" />
+
+      {borrando && (
+        <div className="fixed inset-0 z-50 bg-black/40 flex items-center justify-center p-4" role="dialog" aria-modal="true" aria-labelledby="titulo-suprimir">
+          <div className="bg-white rounded-3xl p-6 max-w-md w-full shadow-xl">
+            <h3 id="titulo-suprimir" className="text-lg font-bold text-gray-800">Eliminar cuenta definitivamente</h3>
+            <p className="text-sm text-gray-600 mt-2">
+              Se borrarán la cuenta de <strong>{borrando.nombre}</strong> y <strong>todo su historial</strong>
+              (tests, respuestas, fallos, uso de la IA y matrículas del Access). <strong>No se puede deshacer.</strong>
+            </p>
+            {borrando.gestionado_access && (
+              <p className="text-xs text-amber-800 bg-amber-50 border border-amber-200 rounded-lg px-3 py-2 mt-3">
+                Este alumno viene del Access: dale también de baja allí o volverá a aparecer en la próxima sincronización.
+              </p>
+            )}
+            <label className="block text-sm text-gray-600 mt-4">
+              Para confirmar, escribe su correo: <span className="font-mono text-gray-800 break-all">{borrando.email}</span>
+              <input value={emailConfirmacion} onChange={(e) => setEmailConfirmacion(e.target.value)} autoFocus
+                className="mt-2 w-full px-3 py-2 rounded-lg border border-gray-200 outline-none focus:ring-2 focus:ring-red-400" />
+            </label>
+            <div className="flex flex-col-reverse sm:flex-row gap-3 mt-5">
+              <button onClick={() => { setBorrando(null); setEmailConfirmacion(''); }} className="flex-1 py-2.5 rounded-xl border border-gray-200 text-gray-600 font-medium cursor-pointer">Cancelar</button>
+              <button onClick={suprimir} disabled={emailConfirmacion.trim().toLowerCase() !== (borrando.email || '').toLowerCase()}
+                className="flex-1 py-2.5 rounded-xl bg-red-600 hover:bg-red-700 text-white font-semibold cursor-pointer disabled:bg-gray-200 disabled:text-gray-400 disabled:cursor-not-allowed">
+                Eliminar definitivamente
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
 
       <div className="bg-white border border-gray-100 rounded-2xl shadow-sm divide-y divide-gray-100">
-        {usuarios.map((u) => (
+        {visibles.map((u) => (
           <div key={u.id} className="p-4 flex flex-col lg:flex-row lg:items-center gap-3">
             <div className="min-w-0 flex-1">
               <p className="font-medium text-gray-800 truncate">
@@ -895,8 +952,17 @@ function UsuariosSection() {
                 {cursos.map((c) => <option key={c.id} value={c.id}>{c.nombre}</option>)}
               </select>
             )}
+
+            {u.id !== yo?.usuario_id && (
+              <button onClick={() => { setBorrando(u); setEmailConfirmacion(''); }}
+                title="Eliminar la cuenta y todo su historial (RGPD)"
+                className="text-xs text-red-600 hover:bg-red-50 border border-red-100 px-3 py-1.5 rounded-lg cursor-pointer shrink-0">
+                Eliminar
+              </button>
+            )}
           </div>
         ))}
+        {visibles.length === 0 && <p className="p-4 text-sm text-gray-400">Ningún usuario coincide con la búsqueda.</p>}
       </div>
     </div>
   );
@@ -980,7 +1046,10 @@ function RankingSection() {
                 {datos.lideres.map((l) => (
                   <tr key={`${l.posicion}-${l.nombre}`} className="border-t border-gray-100">
                     <td className="px-4 py-2 font-semibold text-gray-600">{l.posicion}º</td>
-                    <td className="px-4 py-2 text-gray-700">{l.nombre}</td>
+                    <td className="px-4 py-2 text-gray-700">
+                      {l.nombre}
+                      {l.oculto && <span className="ml-2 text-[11px] text-gray-500 bg-gray-100 px-2 py-0.5 rounded-full" title="Ha elegido no aparecer en el ranking de sus compañeros">oculto a la clase</span>}
+                    </td>
                     <td className="px-4 py-2 text-right text-gray-500">{l.tests}</td>
                     <td className="px-4 py-2 text-right font-semibold text-orange-600">{l.puntos}</td>
                   </tr>

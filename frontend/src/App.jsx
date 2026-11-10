@@ -9,6 +9,8 @@ import TestListado from './pages/TestListado';
 import MaterialTema from './pages/MaterialTema';
 import PersonalizarTest from './pages/PersonalizarTest';
 import NoEncontrada from './pages/NoEncontrada';
+import Privacidad from './pages/Privacidad';
+import AvisoPrivacidad from './components/AvisoPrivacidad';
 import ErrorBoundary from './components/ErrorBoundary';
 
 import { AuthProvider, useAuth } from './auth/AuthContext';
@@ -37,6 +39,10 @@ function RutaProtegida({ children }) {
   if (!usuario) {
     return <Navigate to="/login" replace />;
   }
+  // RGPD: hasta aceptar la política de privacidad vigente no se entra
+  if (usuario.debe_aceptar_privacidad) {
+    return <AvisoPrivacidad />;
+  }
   return children;
 }
 
@@ -57,6 +63,9 @@ function RutaStaff({ children }) {
   if (usuario.rol !== 'admin' && usuario.rol !== 'superadmin') {
     return <Navigate to="/" replace />;
   }
+  if (usuario.debe_aceptar_privacidad) {
+    return <AvisoPrivacidad />;
+  }
   return children;
 }
 
@@ -70,6 +79,7 @@ function Rutas() {
       <Routes>
         {/* La puerta de entrada es libre (no tiene vigilante) */}
         <Route path="/login" element={<Auth />} />
+        <Route path="/privacidad" element={<Privacidad />} />
 
         {/* A partir de aquí, envolvemos TODA la academia con el vigilante */}
         <Route path="/" element={<RutaProtegida><Dashboard /></RutaProtegida>} />

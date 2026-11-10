@@ -14,7 +14,8 @@ from google.auth.transport import requests as google_requests
 from datetime import datetime, timedelta
 
 from models import get_db, Usuario
-from schemas import UsuarioRegistro, UsuarioLogin, GoogleLogin, Token, UsuarioActual
+from schemas import UsuarioRegistro, UsuarioLogin, GoogleLogin, Token, UsuarioActual, RankingVisible
+from services import rgpd
 
 from services.matriculas import aplicar_matriculas_usuario
 from services.limites import limiter, intentos_login, LIMITE_LOGIN, LIMITE_REGISTRO, LIMITE_GOOGLE
@@ -141,7 +142,24 @@ def get_current_user(
             "otro_dispositivo",
             "Tu sesión se ha cerrado porque se ha iniciado sesión en otro dispositivo.",
         )
+    _liberar_conexion(db)
     return usuario
+
+
+def _liberar_conexion(db: Session) -> None:
+    """Cierra la transacción de solo lectura de la autenticación para DEVOLVER la
+    conexión al pool antes de que FastAPI pase al endpoint (que se ejecuta en otro
+    hilo del threadpool). Sin esto, en picos de tráfico cada petición retenía una
+    conexión mientras esperaba hilo y las demás esperaban conexión: bloqueo de 30 s
+    y errores 500 «QueuePool limit ... timed out». Los datos del usuario se conservan
+    (no se expiran) y la siguiente consulta del endpoint pide conexión de nuevo."""
+    expira = db.expire_on_commit
+    db.expire_on_commit = False
+    try:
+        db.commit()
+    finally:
+        db.expire_on_commit = expira
+
 
 def es_superadmin(usuario: Usuario) -> bool:
     return usuario.rol == ROL_SUPERADMIN
@@ -352,7 +370,41 @@ def usuario_actual(usuario: Usuario = Depends(get_current_user)):
         "email": usuario.email,
         "rol": usuario.rol,
         "cursos": [{"id": c.id, "nombre": c.nombre} for c in usuario.cursos],
+        "debe_aceptar_privacidad": rgpd.debe_aceptar_privacidad(usuario),
+        "privacidad_version": rgpd.VERSION_PRIVACIDAD,
+        "mostrar_en_ranking": usuario.mostrar_en_ranking is not False,
     }
+
+
+# --- RGPD -------------------------------------------------------------------
+@router.post("/privacidad/aceptar")
+def aceptar_privacidad(usuario: Usuario = Depends(get_current_user), db: Session = Depends(get_db)):
+    """Registra que el usuario acepta la versión vigente de la política de privacidad."""
+    rgpd.registrar_aceptacion(db, db.get(Usuario, usuario.id))
+    return {"aceptada": True, "version": rgpd.VERSION_PRIVACIDAD}
+
+
+@router.get("/mis-datos")
+def descargar_mis_datos(usuario: Usuario = Depends(get_current_user), db: Session = Depends(get_db)):
+    """Derecho de acceso / portabilidad: todos los datos del usuario en JSON."""
+    from fastapi.responses import JSONResponse
+    return JSONResponse(
+        rgpd.exportar_datos(db, usuario),
+        headers={"Content-Disposition": 'attachment; filename="mis_datos_academia_mega.json"'},
+    )
+
+
+@router.put("/ranking")
+def cambiar_visibilidad_ranking(datos: RankingVisible, usuario: Usuario = Depends(get_current_user),
+                                db: Session = Depends(get_db)):
+    """El alumno decide si aparece (como «Nombre I.») en el ranking de su clase."""
+    from routers.ranking import invalidar_cache_ranking
+    u = db.get(Usuario, usuario.id)
+    u.mostrar_en_ranking = bool(datos.visible)
+    db.commit()
+    for c in usuario.cursos:
+        invalidar_cache_ranking(c.id)
+    return {"mostrar_en_ranking": u.mostrar_en_ranking}
 
 # ENDPOINT 5: LOGOUT (invalida la sesión en el servidor, no solo en el navegador)
 @router.post("/logout")
