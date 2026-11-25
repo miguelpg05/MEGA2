@@ -1,0 +1,815 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Miguel Pina Gómez | Webs y automatización con IA para negocios</title>
+<meta name="description" content="Diseño páginas web modernas y rápidas y automatizo tareas con IA para comercios, peluquerías, academias y hostelería. Trato directo, sin cuotas abusivas.">
+<meta name="theme-color" content="#F9F8F6">
+<meta property="og:title" content="Miguel Pina Gómez | Webs y automatización con IA para negocios">
+<meta property="og:description" content="Ayudo a negocios a crecer en internet. Trato directo, sin intermediarios.">
+<meta property="og:type" content="website">
+<meta property="og:locale" content="es_ES">
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64'%3E%3Crect width='64' height='64' rx='15' fill='%230F2537'/%3E%3Ctext x='32' y='41' text-anchor='middle' font-size='22'%3E%3Ctspan font-family='Arial,sans-serif' fill='%239CC2B1'%3E%26lt;%3C/tspan%3E%3Ctspan font-family='Georgia,serif' font-weight='700' fill='%23F9F8F6'%3EP%3C/tspan%3E%3Ctspan font-family='Arial,sans-serif' fill='%239CC2B1'%3E/%26gt;%3C/tspan%3E%3C/text%3E%3C/svg%3E">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Lora:ital,wght@0,500;0,600;1,500&family=Plus+Jakarta+Sans:wght@400;500;600;700&display=swap" rel="stylesheet">
+
+<style>
+/* ---------- Base ---------- */
+:root{
+  --crema:#F9F8F6;
+  --marino:#0F2537;
+  --salvia:#6B9080;
+  --salvia-suave:#E6EEE9;
+  --whatsapp:#25D366;
+  --blanco:#FFFFFF;
+  --texto-suave:#46586A;
+  --linea:#E3E0D9;
+  --serif:'Lora', Georgia, 'Times New Roman', serif;
+  --sans:'Plus Jakarta Sans', system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif;
+  --radio:14px;
+  --sombra:0 1px 2px rgba(15,37,55,.05), 0 6px 20px rgba(15,37,55,.05);
+}
+*,*::before,*::after{box-sizing:border-box}
+html{scroll-behavior:smooth;-webkit-text-size-adjust:100%}
+body{
+  margin:0;background:var(--crema);color:var(--marino);
+  font-family:var(--sans);font-size:1.0625rem;line-height:1.6;
+  -webkit-font-smoothing:antialiased;
+}
+img,svg{display:block;max-width:100%}
+h1,h2,h3,p,ul,ol,dl,dd,figure{margin:0}
+ul,ol{padding:0;list-style:none}
+a{color:inherit}
+button{font:inherit;color:inherit;cursor:pointer}
+:focus-visible{outline:3px solid var(--salvia);outline-offset:3px;border-radius:6px}
+h1,h2,h3{font-family:var(--serif);font-weight:600;line-height:1.2;letter-spacing:-.01em}
+h1{font-size:clamp(2.1rem,8.2vw,3.5rem);line-height:1.12}
+h2{font-size:clamp(1.6rem,5.6vw,2.25rem)}
+h3{font-size:1.2rem}
+.contenedor{width:100%;max-width:1040px;margin:0 auto;padding:0 22px}
+.seccion{padding:72px 0;scroll-margin-top:64px}
+.seccion-intro{max-width:36rem;margin-bottom:36px}
+.seccion-intro p{margin-top:12px;color:var(--texto-suave)}
+.suave{color:var(--texto-suave)}
+.solo-lector{position:absolute;width:1px;height:1px;overflow:hidden;clip:rect(0 0 0 0);white-space:nowrap}
+
+/* ---------- Botones ---------- */
+.boton{
+  display:inline-flex;align-items:center;justify-content:center;gap:10px;
+  min-height:52px;padding:13px 22px;border-radius:12px;border:1.5px solid transparent;
+  font-weight:600;font-size:1rem;line-height:1.2;text-decoration:none;text-align:center;
+  transition:background-color .15s, border-color .15s, transform .1s;
+}
+.boton:active{transform:scale(.98)}
+.boton svg{width:20px;height:20px;flex:none}
+.boton-principal{background:var(--marino);color:var(--crema)}
+.boton-principal:hover{background:#1A3650}
+.boton-whatsapp{background:var(--whatsapp);color:var(--marino)}
+.boton-whatsapp:hover{background:#1FC45C}
+.boton-linea{background:transparent;border-color:var(--salvia);color:var(--marino)}
+.boton-linea:hover{background:var(--salvia-suave)}
+.boton-pequeno{min-height:42px;padding:9px 14px;font-size:.9rem;border-radius:10px}
+.boton-pequeno svg{width:18px;height:18px}
+
+/* ---------- Navegación ---------- */
+.nav{
+  position:sticky;top:0;z-index:20;background:rgba(249,248,246,.92);
+  backdrop-filter:saturate(1.4) blur(10px);-webkit-backdrop-filter:saturate(1.4) blur(10px);
+  border-bottom:1px solid var(--linea);
+}
+.nav .contenedor{display:flex;align-items:center;justify-content:space-between;gap:12px;min-height:60px}
+.nav-nombre{font-size:1.4rem;text-decoration:none;white-space:nowrap;line-height:1}
+.logo{font-family:var(--serif);font-weight:600;color:var(--marino);letter-spacing:-.01em;white-space:nowrap}
+.logo-s{font-family:var(--sans);font-weight:500;color:var(--salvia);margin:0 .03em}
+.logo-claro{color:#FFFFFF}.logo-claro .logo-s{color:#D6E4DD}
+.nav .texto-largo{display:none}
+@media (min-width:430px){.nav .texto-largo{display:inline}.nav .texto-corto{display:none}}
+
+/* ---------- Hero ---------- */
+.hero{padding:48px 0 72px;text-align:center}
+.hero-persona{display:flex;align-items:center;justify-content:center;gap:14px;margin-bottom:28px;text-align:left}
+.foto{
+  width:68px;height:68px;border-radius:50%;object-fit:cover;
+  background:var(--blanco);border:2px solid var(--blanco);box-shadow:0 0 0 1.5px var(--salvia);flex:none;
+}
+.hero-persona strong{display:block;font-weight:700;line-height:1.3}
+.hero-persona span{display:block;font-size:.92rem;color:var(--texto-suave);line-height:1.35}
+.etiqueta{
+  display:inline-block;padding:7px 14px;border-radius:999px;background:var(--salvia-suave);
+  font-size:.88rem;font-weight:600;margin-bottom:18px;
+}
+.hero h1{max-width:15ch;margin-left:auto;margin-right:auto}
+.hero-sub{margin:20px auto 0;max-width:34rem;color:var(--texto-suave);font-size:1.1rem}
+.hero-firma{margin-top:28px;font-family:var(--serif);font-style:italic;font-size:1.05rem;color:var(--texto-suave)}
+.hero-acciones{display:flex;flex-direction:column;gap:12px;margin:32px auto 0;max-width:26rem}
+@media (min-width:600px){.hero-acciones{flex-direction:row;justify-content:center;max-width:none}}
+@media (min-width:900px){.hero{padding:96px 0 120px}}
+
+/* ---------- Proyecto destacado ---------- */
+.proyecto{background:var(--blanco);border-top:1px solid var(--linea);border-bottom:1px solid var(--linea)}
+.proyecto-rejilla{display:grid;gap:40px}
+.proyecto-tipo{font-weight:600;color:var(--salvia);font-size:.95rem;margin-bottom:8px}
+.proyecto-texto>p{margin-top:14px;color:var(--texto-suave)}
+.funciones{margin-top:26px;display:grid;gap:18px}
+.funciones li{display:grid;grid-template-columns:40px 1fr;gap:14px;align-items:start}
+.icono{
+  width:40px;height:40px;border-radius:11px;background:var(--salvia-suave);color:#3F6657;
+  display:grid;place-items:center;
+}
+.icono svg{width:21px;height:21px}
+.funciones strong{display:block;line-height:1.35}
+.funciones span{display:block;color:var(--texto-suave);font-size:.97rem;margin-top:2px}
+@media (min-width:900px){.proyecto-rejilla{grid-template-columns:1fr 400px;gap:64px;align-items:center}}
+
+/* Maqueta del panel del alumno */
+.maqueta{
+  background:var(--crema);border:1px solid var(--linea);border-radius:20px;padding:10px;
+  box-shadow:0 2px 4px rgba(15,37,55,.04), 0 18px 44px rgba(15,37,55,.10);
+}
+.maqueta-barra{display:flex;align-items:center;gap:6px;padding:4px 8px 10px}
+.maqueta-barra i{width:8px;height:8px;border-radius:50%;background:#D5D1C8}
+.maqueta-barra span{margin-left:8px;font-size:.75rem;color:var(--texto-suave)}
+.panel{background:var(--blanco);border-radius:13px;padding:20px 18px;border:1px solid var(--linea)}
+.panel-cabecera{display:flex;align-items:center;gap:16px}
+.anillo{
+  --valor:74;width:84px;height:84px;border-radius:50%;flex:none;display:grid;place-items:center;
+  background:conic-gradient(var(--salvia) calc(var(--valor)*1%), var(--salvia-suave) 0);
+}
+.anillo b{
+  width:64px;height:64px;border-radius:50%;background:var(--blanco);display:grid;place-items:center;
+  font-family:var(--serif);font-size:1.25rem;font-weight:600;
+}
+.panel-cabecera p{font-size:.85rem;color:var(--texto-suave);line-height:1.4}
+.panel-cabecera strong{display:block;font-size:1.02rem;color:var(--marino);margin-bottom:2px}
+.temas{margin-top:20px;display:grid;gap:13px}
+.tema-fila{display:flex;justify-content:space-between;gap:10px;font-size:.86rem;font-weight:600;margin-bottom:6px}
+.tema-fila span:last-child{font-weight:500;color:var(--texto-suave);white-space:nowrap}
+.tema-barra{height:8px;border-radius:99px;background:var(--salvia-suave);overflow:hidden}
+.tema-barra i{display:block;height:100%;border-radius:99px;background:var(--salvia)}
+.tema.repasar .tema-barra i{background:#D9A441}
+.tema.destacado{background:var(--salvia-suave);margin:0 -8px;padding:10px 8px;border-radius:10px}
+.tema.destacado .tema-barra{background:#fff}
+.tema.destacado .tema-fila span:last-child{color:#2F5A49;font-weight:700}
+.panel-pie{display:flex;flex-wrap:wrap;gap:8px;margin-top:18px}
+.panel-pie span{font-size:.78rem;font-weight:600;padding:6px 10px;border-radius:8px;border:1px solid var(--linea);background:var(--crema)}
+.maqueta-nota{font-size:.82rem;color:var(--texto-suave);margin-top:12px;text-align:center}
+
+/* ---------- Ejemplos ---------- */
+.ejemplos-rejilla{display:grid;gap:18px}
+@media (min-width:820px){.ejemplos-rejilla{grid-template-columns:repeat(3,1fr)}}
+.ejemplo{
+  background:var(--blanco);border:1px solid var(--linea);border-radius:var(--radio);
+  box-shadow:var(--sombra);overflow:hidden;display:flex;flex-direction:column;
+}
+.miniatura{height:132px;padding:16px 18px;display:flex;flex-direction:column;justify-content:space-between}
+.miniatura b{font-family:var(--serif);font-size:1.15rem;font-weight:600}
+.miniatura small{font-size:.74rem;opacity:.8}
+.miniatura div{display:flex;gap:6px}
+.miniatura div i{height:22px;border-radius:6px;flex:1;opacity:.9}
+.mini-barberia{background:#1F1B18;color:#F3EBDD}
+.mini-barberia div i{background:#35302B}.mini-barberia div i:last-child{background:#C8A15A;flex:1.4}
+.mini-veterinaria{background:#EAF4F7;color:#14465A}
+.mini-veterinaria div i{background:#fff}.mini-veterinaria div i:last-child{background:#2B6F8A;flex:1.4}
+.mini-bar{background:#FBEFDC;color:#6E2727}
+.mini-bar div i{background:#fff}.mini-bar div i:last-child{background:#7A2E2E;flex:1.4}
+.ejemplo-cuerpo{padding:20px 18px 18px;display:flex;flex-direction:column;gap:10px;flex:1}
+.ejemplo-cuerpo p{color:var(--texto-suave);font-size:.97rem;flex:1}
+.ejemplo-cuerpo .boton{margin-top:8px;width:100%}
+
+/* ---------- Por qué ---------- */
+.fondo-blanco{background:var(--blanco);border-top:1px solid var(--linea);border-bottom:1px solid var(--linea)}
+.cta-intermedia{margin-top:40px;display:flex;flex-direction:column;align-items:center;gap:16px;text-align:center}
+.cta-intermedia p{font-family:var(--serif);font-weight:600;font-size:1.3rem;line-height:1.3}
+.pasos-titulo{margin-top:56px;margin-bottom:22px;font-size:1.35rem}
+.pasos{display:grid;gap:20px;counter-reset:none}
+.pasos li{display:grid;grid-template-columns:40px 1fr;gap:14px;align-items:start}
+.paso-num{width:40px;height:40px;border-radius:50%;background:var(--salvia-suave);color:#2F5A49;display:grid;place-items:center;font-family:var(--serif);font-weight:600;font-size:1.1rem}
+.pasos strong{display:block;line-height:1.35}
+.pasos p{color:var(--texto-suave);font-size:.97rem;margin-top:2px}
+@media (min-width:820px){.pasos{grid-template-columns:repeat(3,1fr);gap:32px}}
+.razones{display:grid;gap:30px}
+.razones li{display:grid;grid-template-columns:48px 1fr;gap:16px}
+.razones .icono{width:48px;height:48px;border-radius:13px}
+.razones .icono svg{width:24px;height:24px}
+.razones p{color:var(--texto-suave);margin-top:6px}
+@media (min-width:820px){
+  .razones{grid-template-columns:repeat(3,1fr);gap:40px}
+  .razones li{grid-template-columns:1fr;gap:16px}
+}
+
+/* ---------- Sobre mí ---------- */
+.sobre-rejilla{display:grid;gap:26px;max-width:44rem}
+.sobre-rejilla .foto{width:104px;height:104px}
+.sobre-texto p{margin-top:14px;color:var(--texto-suave)}
+.datos{margin-top:24px;border-top:1px solid var(--linea)}
+.datos div{display:flex;justify-content:space-between;gap:18px;padding:13px 0;border-bottom:1px solid var(--linea);font-size:.97rem}
+.datos dt{color:var(--texto-suave);flex:none}
+.datos dd{font-weight:600;text-align:right}
+@media (min-width:700px){.sobre-rejilla{grid-template-columns:104px 1fr;gap:36px}}
+
+/* ---------- Contacto ---------- */
+.contacto{background:#4E7263;color:#FFFFFF;padding:72px 0 40px}
+.contacto-logo{font-size:2.2rem;line-height:1;margin-bottom:26px}
+.hero-logo{display:block;font-size:clamp(3rem,15vw,5.5rem);line-height:1;margin:0 auto 30px}
+.contacto h2{max-width:18ch}
+.contacto-sub{margin-top:14px;color:#E3ECE7;max-width:32rem}
+.contacto-acciones{display:grid;gap:12px;margin-top:30px;max-width:26rem}
+.contacto .boton-whatsapp{min-height:60px;font-size:1.08rem}
+.contacto .boton-linea{border-color:rgba(255,255,255,.55);color:#FFFFFF}
+.contacto .boton-linea:hover{background:#43655A}
+.contacto-dato{display:block;font-size:.82rem;font-weight:500;color:#E3ECE7}
+.boton-doble{flex-direction:column;gap:2px}
+.pie{margin-top:56px;padding-top:22px;border-top:1px solid #739487;font-size:.86rem;color:#E3ECE7;padding-bottom:64px}
+
+/* ---------- WhatsApp flotante ---------- */
+.flotante{
+  position:fixed;right:16px;bottom:16px;z-index:15;width:54px;height:54px;border-radius:50%;
+  background:var(--whatsapp);color:var(--marino);display:grid;place-items:center;
+  box-shadow:0 4px 14px rgba(15,37,55,.25);text-decoration:none;
+}
+.flotante svg{width:28px;height:28px}
+
+/* ---------- Ventana de vista previa ---------- */
+dialog.vista{
+  border:0;padding:0;background:var(--marino);color:var(--crema);
+  width:100%;max-width:100%;height:100%;max-height:100%;margin:0;overflow:hidden;
+}
+dialog.vista[open]{display:flex;flex-direction:column}
+dialog.vista::backdrop{background:rgba(15,37,55,.6)}
+.vista-barra{display:flex;align-items:center;justify-content:space-between;gap:12px;padding:10px 12px 10px 16px;flex:none}
+.vista-barra p{font-size:.86rem;line-height:1.35}
+.vista-barra p b{display:block;font-size:.95rem}
+.vista-cerrar{
+  background:var(--crema);color:var(--marino);border:0;border-radius:10px;
+  min-height:42px;padding:8px 16px;font-weight:600;font-size:.92rem;flex:none;
+}
+.vista-pantalla{flex:1;overflow-y:auto;overscroll-behavior:contain;background:#fff;color:#222;border-radius:16px 16px 0 0}
+@media (min-width:640px){
+  dialog.vista{width:420px;height:min(860px,92vh);margin:auto;border-radius:34px;padding:0 10px 10px;box-shadow:0 30px 80px rgba(0,0,0,.4)}
+  .vista-pantalla{border-radius:24px}
+}
+
+/* ---------- Demos (cada una con su propia identidad) ---------- */
+.demo{min-height:100%;font-size:.95rem;line-height:1.5;padding-bottom:28px}
+.demo h4{margin:0;font-family:var(--serif);font-size:1.7rem;line-height:1.15;font-weight:600}
+.demo h5{margin:0 0 12px;font-size:1.02rem;font-weight:700;font-family:var(--sans)}
+.demo-cabecera{padding:30px 20px 26px}
+.demo-cabecera p{margin-top:8px;opacity:.85}
+.demo-bloque{padding:22px 20px 4px}
+.demo-opciones{display:flex;flex-wrap:wrap;gap:8px}
+.demo-opciones button{
+  border-radius:10px;padding:10px 14px;min-height:44px;font-weight:600;font-size:.9rem;
+  border:1.5px solid var(--d-linea);background:var(--d-fondo-2);color:inherit;
+}
+.demo-opciones button[aria-pressed="true"]{background:var(--d-acento);border-color:var(--d-acento);color:var(--d-sobre-acento)}
+.demo-accion{
+  width:100%;min-height:50px;border:0;border-radius:12px;margin-top:16px;
+  background:var(--d-acento);color:var(--d-sobre-acento);font-weight:700;font-size:1rem;
+}
+.demo-aviso{margin-top:12px;padding:12px 14px;border-radius:10px;font-size:.9rem;font-weight:600;background:var(--d-fondo-2);border:1.5px dashed var(--d-linea)}
+.demo-aviso:empty{display:none}
+.demo-lista li{display:flex;justify-content:space-between;gap:12px;padding:11px 0;border-bottom:1px solid var(--d-linea)}
+.demo-lista li span:last-child{font-weight:700;white-space:nowrap}
+
+.demo-barberia{--d-acento:#C8A15A;--d-sobre-acento:#1F1B18;--d-linea:#3A342E;--d-fondo-2:#2A2521;background:#1F1B18;color:#F3EBDD}
+.demo-barberia .demo-cabecera{border-bottom:1px solid #3A342E}
+.demo-barberia .demo-cabecera small{color:#C8A15A;font-weight:700}
+.galeria{display:grid;grid-template-columns:repeat(3,1fr);gap:8px}
+.galeria div{aspect-ratio:1;border-radius:10px;display:flex;align-items:flex-end;padding:8px;font-size:.72rem;font-weight:600;color:#F3EBDD;background-color:#2A2521;background-size:cover;background-position:center}
+
+.demo-veterinaria{--d-acento:#2B6F8A;--d-sobre-acento:#fff;--d-linea:#D3E4EA;--d-fondo-2:#F4FAFB;background:#fff;color:#14323F}
+.demo-veterinaria .demo-cabecera{background:#EAF4F7}
+.demo-veterinaria h4{font-family:var(--sans);font-weight:700;font-size:1.5rem}
+.urgencia{margin:18px 20px 0;padding:14px 16px;border-radius:12px;background:#FFF1EE;border:1.5px solid #F2C4BA;color:#8A2A18;display:flex;justify-content:space-between;align-items:center;gap:12px;font-size:.88rem}
+.urgencia b{display:block;font-size:1.05rem}
+.urgencia span{background:#C8432A;color:#fff;font-weight:700;padding:9px 14px;border-radius:9px;white-space:nowrap}
+
+.demo-bar{--d-acento:#7A2E2E;--d-sobre-acento:#fff;--d-linea:#EBD9BF;--d-fondo-2:#fff;background:#FFF8EC;color:#3B2020}
+.demo-bar .demo-cabecera{background:#7A2E2E;color:#FFF3DF}
+.demo-bar h4{font-style:italic;font-weight:500}
+.carta li{display:grid;grid-template-columns:1fr auto;gap:4px 12px;align-items:center;padding:12px 0;border-bottom:1px solid var(--d-linea)}
+.carta b{display:block}
+.carta small{color:#7B5E4A;font-size:.82rem}
+.cantidad{display:flex;align-items:center;gap:8px}
+.cantidad button{width:38px;height:38px;border-radius:50%;border:1.5px solid #7A2E2E;background:#fff;color:#7A2E2E;font-size:1.2rem;font-weight:700;line-height:1}
+.cantidad output{min-width:1.2em;text-align:center;font-weight:700}
+.pedido-total{display:flex;justify-content:space-between;font-weight:700;font-size:1.05rem;padding-top:16px}
+.mensaje-wa{margin-top:12px;padding:12px 14px;border-radius:4px 14px 14px 14px;background:#DCF8C6;color:#1B2B1B;font-size:.9rem;white-space:pre-line}
+.mensaje-wa:empty{display:none}
+
+@media (prefers-reduced-motion:reduce){
+  html{scroll-behavior:auto}
+  .boton{transition:none}
+}
+</style>
+</head>
+<body>
+
+<!-- Icono de WhatsApp reutilizable -->
+<svg width="0" height="0" style="position:absolute" aria-hidden="true">
+  <symbol id="ico-whatsapp" viewBox="0 0 24 24">
+    <path fill="currentColor" d="M12.04 2C6.58 2 2.13 6.45 2.13 11.91c0 1.75.46 3.45 1.32 4.95L2.05 22l5.25-1.38a9.9 9.9 0 0 0 4.74 1.21h.01c5.46 0 9.91-4.45 9.91-9.91 0-2.65-1.03-5.14-2.9-7.01A9.82 9.82 0 0 0 12.04 2Zm0 1.67c2.2 0 4.26.86 5.82 2.42a8.2 8.2 0 0 1 2.41 5.83c0 4.54-3.7 8.23-8.24 8.23-1.48 0-2.93-.39-4.19-1.15l-.3-.17-3.12.82.83-3.04-.2-.32a8.19 8.19 0 0 1-1.26-4.38c.01-4.54 3.7-8.24 8.25-8.24ZM8.53 7.33c-.16 0-.43.06-.66.31-.22.25-.87.85-.87 2.07 0 1.22.89 2.4 1.01 2.56.13.17 1.76 2.67 4.25 3.74.59.26 1.05.41 1.41.52.59.19 1.13.16 1.56.1.48-.07 1.46-.6 1.67-1.18.21-.58.21-1.07.14-1.18-.06-.1-.23-.16-.48-.29-.25-.12-1.47-.72-1.69-.81-.23-.08-.39-.12-.56.13-.16.25-.64.81-.78.97-.15.17-.29.19-.54.06-.25-.12-1.05-.39-2-1.23-.74-.66-1.24-1.47-1.38-1.72-.15-.25-.02-.38.11-.51.11-.11.25-.29.37-.43.13-.15.17-.25.25-.42.08-.16.04-.31-.02-.43-.06-.13-.56-1.35-.77-1.84-.2-.48-.4-.42-.56-.43l-.46-.01Z"/>
+  </symbol>
+</svg>
+
+<header class="nav">
+  <div class="contenedor">
+    <a class="nav-nombre logo" href="#inicio" aria-label="Miguel Pina, ir al inicio"><span class="logo-s">&lt;</span>Pina<span class="logo-s">/&gt;</span></a>
+    <a class="boton boton-whatsapp boton-pequeno" data-whatsapp href="#contacto" aria-label="Contactar por WhatsApp">
+      <svg aria-hidden="true"><use href="#ico-whatsapp"/></svg>
+      <span class="texto-corto">WhatsApp</span><span class="texto-largo">Contactar por WhatsApp</span>
+    </a>
+  </div>
+</header>
+
+<main>
+
+<!-- Cabecera -->
+<section class="hero" id="inicio">
+  <div class="contenedor">
+    <div class="hero-persona">
+      <img class="foto" src="foto-miguel.jpg" alt="Miguel Pina Gómez" width="68" height="68">
+      <p><strong>Miguel Pina Gómez</strong><span>Desarrollo Web &amp; Soluciones Digitales</span></p>
+    </div>
+    <p class="etiqueta">📍 Altabix, Elche · Ing. Informática UMH</p>
+    <h1>Ayudo a negocios a crecer en internet.</h1>
+    <p class="hero-sub">Hago que la tecnología sea sencilla para que tu negocio crezca en internet: webs rápidas, pensadas para que tus clientes te encuentren y reserven sin complicaciones, y automatizaciones con IA que te quitan tareas repetitivas.</p>
+    <div class="hero-acciones">
+      <a class="boton boton-principal" href="#ejemplos">Ver proyectos y ejemplos</a>
+      <a class="boton boton-whatsapp" data-whatsapp href="#contacto">
+        <svg aria-hidden="true"><use href="#ico-whatsapp"/></svg>Hablar por WhatsApp
+      </a>
+    </div>
+    <p class="hero-firma">Trato directo, sin intermediarios.</p>
+  </div>
+</section>
+
+<!-- Ejemplos -->
+<section class="seccion fondo-blanco" id="ejemplos">
+  <div class="contenedor">
+    <div class="seccion-intro">
+      <h2>Así podría ser la web de tu negocio</h2>
+      <p>Tres ejemplos que puedes abrir y tocar. Los negocios son inventados; el tuyo llevaría tu nombre, tus fotos y tus precios.</p>
+    </div>
+    <div class="ejemplos-rejilla">
+      <article class="ejemplo">
+        <div class="miniatura mini-barberia" aria-hidden="true"><div><small>Precios · Galería · Reserva</small></div><b>Barbería La Navaja</b><div><i></i><i></i><i></i></div></div>
+        <div class="ejemplo-cuerpo">
+          <h3>Peluquería o barbería de barrio</h3>
+          <p>Lista de precios clara, galería de cortes y un botón para reservar en dos toques.</p>
+          <button class="boton boton-linea" type="button" data-demo="barberia" data-titulo="Peluquería o barbería">Abrir ejemplo</button>
+        </div>
+      </article>
+      <article class="ejemplo">
+        <div class="miniatura mini-veterinaria" aria-hidden="true"><div><small>Citas · Horarios · Urgencias</small></div><b>Clínica Huellas</b><div><i></i><i></i><i></i></div></div>
+        <div class="ejemplo-cuerpo">
+          <h3>Clínica veterinaria o de salud</h3>
+          <p>Cita previa sin llamadas, horarios siempre a la vista y el teléfono de urgencias bien visible.</p>
+          <button class="boton boton-linea" type="button" data-demo="veterinaria" data-titulo="Clínica veterinaria o de salud">Abrir ejemplo</button>
+        </div>
+      </article>
+      <article class="ejemplo">
+        <div class="miniatura mini-bar" aria-hidden="true"><div><small>Carta · Pedidos por WhatsApp</small></div><b>Casa Dátil</b><div><i></i><i></i><i></i></div></div>
+        <div class="ejemplo-cuerpo">
+          <h3>Comercio local u hostelería</h3>
+          <p>Carta digital o catálogo de productos, con pedidos que te llegan directos al WhatsApp.</p>
+          <button class="boton boton-linea" type="button" data-demo="bar" data-titulo="Comercio local u hostelería">Abrir ejemplo</button>
+        </div>
+      </article>
+    </div>
+    <div class="cta-intermedia">
+      <p>¿Te imaginas algo así para tu negocio?</p>
+      <a class="boton boton-whatsapp" data-whatsapp href="#contacto"><svg aria-hidden="true"><use href="#ico-whatsapp"/></svg>Escríbeme y lo vemos</a>
+    </div>
+  </div>
+</section>
+
+<!-- Automatización con IA -->
+<section class="seccion" id="automatizacion">
+  <div class="contenedor">
+    <div class="seccion-intro">
+      <h2>Automatiza las tareas que te roban tiempo</h2>
+      <p>Uso inteligencia artificial para que las tareas repetitivas de tu negocio se hagan solas y tú puedas centrarte en tus clientes.</p>
+    </div>
+    <ul class="razones">
+      <li>
+        <span class="icono" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><rect x="3.5" y="5" width="17" height="15" rx="2.5"/><path d="M3.5 10h17M8 3v4M16 3v4M9 15l2 2 4-4"/></svg></span>
+        <div><h3>Citas y recordatorios</h3><p>Las reservas se apuntan solas en tu calendario y tus clientes reciben un aviso antes de la cita. Menos huecos vacíos y menos llamadas.</p></div>
+      </li>
+      <li>
+        <span class="icono" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M20 12a8 8 0 0 1-11.6 7.1L4 20l1-4.1A8 8 0 1 1 20 12Z"/><path d="M9 11h.01M12 11h.01M15 11h.01"/></svg></span>
+        <div><h3>Atención al cliente</h3><p>Un asistente que responde al momento las preguntas de siempre (horarios, precios, cómo reservar) por WhatsApp o en tu web, y te avisa de lo que necesita tu atención.</p></div>
+      </li>
+      <li>
+        <span class="icono" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3.5l2.6 5.3 5.8.8-4.2 4.1 1 5.8L12 16.8l-5.2 2.7 1-5.8L3.6 9.6l5.8-.8L12 3.5Z"/></svg></span>
+        <div><h3>Contenido y reseñas</h3><p>Borradores de publicaciones para tus redes y respuestas a las reseñas de Google, listos para que los revises y publiques en un minuto.</p></div>
+      </li>
+    </ul>
+    <div class="cta-intermedia">
+      <p>¿Qué tarea te gustaría quitarte de encima?</p>
+      <a class="boton boton-whatsapp" data-whatsapp href="#contacto"><svg aria-hidden="true"><use href="#ico-whatsapp"/></svg>Cuéntamela</a>
+    </div>
+  </div>
+</section>
+
+<!-- Por qué -->
+<section class="seccion porque fondo-blanco" id="por-que">
+  <div class="contenedor">
+    <div class="seccion-intro"><h2>¿Por qué trabajar conmigo?</h2></div>
+    <ul class="razones">
+      <li>
+        <span class="icono" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M12 21s-7-5.6-7-11a7 7 0 0 1 14 0c0 5.4-7 11-7 11Z"/><circle cx="12" cy="10" r="2.5"/></svg></span>
+        <div><h3>Trato cercano, en persona o a distancia</h3><p>Si estás cerca, nos vemos en tu local; si no, por videollamada. Entendemos qué necesitas y te enseño avances reales.</p></div>
+      </li>
+      <li>
+        <span class="icono" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3l7 3v5c0 4.5-3 8.3-7 10-4-1.7-7-5.5-7-10V6l7-3Z"/><path d="M9 12l2 2 4-4"/></svg></span>
+        <div><h3>Sin cuotas abusivas ni permanencias</h3><p>Pagas por un trabajo bien hecho, transparente y adaptado a lo que tu negocio realmente necesita hoy.</p></div>
+      </li>
+      <li>
+        <span class="icono" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><rect x="7" y="2.5" width="10" height="19" rx="2.5"/><path d="M11 18h2"/></svg></span>
+        <div><h3>Pensado para el móvil</h3><p>Más del 80% de tus clientes te buscarán desde el teléfono; tu web cargará al instante y será facilísima de usar.</p></div>
+      </li>
+    </ul>
+    <h3 class="pasos-titulo">Cómo trabajamos</h3>
+    <ol class="pasos">
+      <li><span class="paso-num" aria-hidden="true">1</span><div><strong>Hablamos</strong><p>Quedamos en tu local o por videollamada y me cuentas qué necesita tu negocio.</p></div></li>
+      <li><span class="paso-num" aria-hidden="true">2</span><div><strong>Te enseño una propuesta</strong><p>Ves cómo quedaría tu web antes de empezar, con un presupuesto claro y sin compromiso.</p></div></li>
+      <li><span class="paso-num" aria-hidden="true">3</span><div><strong>Tu web en marcha</strong><p>La publico y te explico cómo sacarle partido para que tus clientes te encuentren.</p></div></li>
+    </ol>
+  </div>
+</section>
+
+<!-- Proyecto destacado -->
+<section class="seccion" id="proyecto">
+  <div class="contenedor proyecto-rejilla">
+    <div class="proyecto-texto">
+      <p class="proyecto-tipo">Proyecto real, en uso</p>
+      <h2>Plataforma educativa a medida para una academia de Elche</h2>
+      <p>He desarrollado desde cero la plataforma web con la que los alumnos de una academia local preparan sus exámenes. Entran desde el móvil o el ordenador y la plataforma les dice qué estudiar y cuánto les falta. Me he encargado de todo: el diseño, la programación, la base de datos y la puesta en marcha.</p>
+      <ul class="funciones">
+        <li>
+          <span class="icono" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M9 11l2 2 4-4"/><rect x="4" y="4" width="16" height="16" rx="3"/></svg></span>
+          <div><strong>Test inteligentes por temas</strong><span>Cada alumno practica justo lo que necesita reforzar.</span></div>
+        </li>
+        <li>
+          <span class="icono" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M4 19V5M4 19h16M8 15v-3M12 15V8M16 15v-5"/></svg></span>
+          <div><strong>Progreso hacia el aprobado</strong><span>Un panel visual muestra de un vistazo cómo va en cada tema.</span></div>
+        </li>
+        <li>
+          <span class="icono" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="7" width="14" height="12" rx="2"/><path d="M7 7V5a2 2 0 0 1 2-2h10a2 2 0 0 1 2 2v8a2 2 0 0 1-2 2h-2"/></svg></span>
+          <div><strong>Flashcards de sus fallos</strong><span>Las preguntas falladas se convierten solas en tarjetas de repaso.</span></div>
+        </li>
+        <li>
+          <span class="icono" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="8.5"/><path d="M12 7.5V12l3 2"/></svg></span>
+          <div><strong>Esquemas según su tiempo</strong><span>¿Solo 20 minutos hoy? La plataforma prepara un resumen a medida.</span></div>
+        </li>
+      </ul>
+    </div>
+
+    <figure>
+      <div class="maqueta" role="img" aria-label="Ejemplo del panel de progreso de un alumno: 74 % de avance general y Tema 4 al 82 %, nivel aprobado">
+        <div class="maqueta-barra" aria-hidden="true"><i></i><i></i><i></i><span>Panel del alumno</span></div>
+        <div class="panel" aria-hidden="true">
+          <div class="panel-cabecera">
+            <div class="anillo"><b>74%</b></div>
+            <p><strong>Hola, África</strong>Vas camino del aprobado. Te quedan 2 temas por reforzar.</p>
+          </div>
+          <div class="temas">
+            <div class="tema"><div class="tema-fila"><span>Tema 1</span><span>91% · Dominado</span></div><div class="tema-barra"><i style="width:91%"></i></div></div>
+            <div class="tema"><div class="tema-fila"><span>Tema 2</span><span>68% · Casi</span></div><div class="tema-barra"><i style="width:68%"></i></div></div>
+            <div class="tema repasar"><div class="tema-fila"><span>Tema 3</span><span>55% · Repasar</span></div><div class="tema-barra"><i style="width:55%"></i></div></div>
+            <div class="tema destacado"><div class="tema-fila"><span>Tema 4</span><span>82% · Nivel aprobado</span></div><div class="tema-barra"><i style="width:82%"></i></div></div>
+          </div>
+          <div class="panel-pie"><span>12 flashcards de tus fallos</span><span>Esquema de 20 min</span></div>
+        </div>
+      </div>
+      <figcaption class="maqueta-nota">Recreación del panel de progreso, con datos de ejemplo.</figcaption>
+    </figure>
+  </div>
+</section>
+
+<!-- Sobre mí -->
+<section class="seccion fondo-blanco" id="sobre-mi">
+  <div class="contenedor">
+    <div class="sobre-rejilla">
+      <img class="foto" src="foto-miguel.jpg" alt="" width="104" height="104" loading="lazy">
+      <div class="sobre-texto">
+        <h2>Sobre mí</h2>
+        <p>Soy Miguel, tengo 21 años y estoy en tercer curso de Ingeniería Informática en la Universidad Miguel Hernández. Me apasionan el desarrollo web y la inteligencia artificial, sobre todo cuando sirven para resolver los problemas del día a día de un negocio: que te encuentren, que te reserven, que no pierdas tiempo al teléfono.</p>
+        <p>Compagino la carrera con mis proyectos a base de organización, así que cuando te doy una fecha, la cumplo.</p>
+        <dl class="datos">
+          <div><dt>Estudios</dt><dd>Grado en Ingeniería Informática, UMH (desde 2023, 3.º curso)</dd></div>
+          <div><dt>Ahora mismo</dt><dd>Desarrollador de la plataforma de una academia de Elche</dd></div>
+          <div><dt>Qué hago</dt><dd>Webs completas: diseño, programación y base de datos</dd></div>
+          <div><dt>Idiomas</dt><dd>Valenciano C1 · Inglés B2 · Alemán A2</dd></div>
+          <div><dt>Dónde estoy</dt><dd>Altabix, Elche (Alicante)</dd></div>
+        </dl>
+      </div>
+    </div>
+  </div>
+</section>
+
+</main>
+
+<!-- Contacto y pie -->
+<footer class="contacto" id="contacto">
+  <div class="contenedor">
+    <p class="logo logo-claro contacto-logo" role="img" aria-label="Pina"><span class="logo-s">&lt;</span>Pina<span class="logo-s">/&gt;</span></p>
+    <h2>¿Hablamos sobre cómo mejorar la presencia de tu negocio?</h2>
+    <p class="contacto-sub">Escríbeme y lo hablamos en tu local o por videollamada. La primera charla y el presupuesto no te cuestan nada.</p>
+    <div class="contacto-acciones">
+      <a class="boton boton-whatsapp" data-whatsapp href="#contacto">
+        <svg aria-hidden="true"><use href="#ico-whatsapp"/></svg>Escribir por WhatsApp
+      </a>
+      <a class="boton boton-linea boton-doble" href="tel:+34611452252">Llamar ahora<span class="contacto-dato">611 452 252</span></a>
+      <button class="boton boton-linea boton-doble" type="button" id="copiar-correo"><span id="copiar-texto">Copiar mi correo</span><span class="contacto-dato">miguelpina005@gmail.com</span></button>
+      <span class="solo-lector" role="status" id="copiar-estado"></span>
+    </div>
+    <p class="pie">© <span id="anio">2026</span> Miguel Pina Gómez. Desarrollo web desde Elche (Alicante).</p>
+  </div>
+</footer>
+
+<a class="flotante" data-whatsapp href="#contacto" aria-label="Hablar por WhatsApp">
+  <svg aria-hidden="true"><use href="#ico-whatsapp"/></svg>
+</a>
+
+<!-- Ventana de vista previa -->
+<dialog class="vista" id="vista" aria-labelledby="vista-titulo">
+  <div class="vista-barra">
+    <p><b id="vista-titulo">Ejemplo</b>Web de muestra. El negocio es inventado.</p>
+    <button class="vista-cerrar" type="button" id="vista-cerrar">Cerrar</button>
+  </div>
+  <div class="vista-pantalla" id="vista-pantalla" tabindex="0"></div>
+</dialog>
+
+<!-- Demo 1: barbería -->
+<template id="demo-barberia">
+  <div class="demo demo-barberia" data-tipo="reserva" data-frase="Reserva de ejemplo confirmada: {servicio}, hoy a las {hora}." data-falta="Elige un servicio y una hora.">
+    <div class="demo-cabecera">
+      <small>Carrús, Elche</small>
+      <h4>Barbería La Navaja</h4>
+      <p>Cortes clásicos y degradados. Abierto de martes a sábado.</p>
+    </div>
+    <div class="demo-bloque">
+      <h5>Precios</h5>
+      <ul class="demo-lista">
+        <li><span>Corte</span><span>12 €</span></li>
+        <li><span>Corte + barba</span><span>17 €</span></li>
+        <li><span>Arreglo de barba</span><span>7 €</span></li>
+        <li><span>Corte infantil</span><span>9 €</span></li>
+      </ul>
+    </div>
+    <div class="demo-bloque">
+      <h5>Nuestros cortes</h5>
+      <div class="galeria"><div style="background-image:linear-gradient(transparent 50%,rgba(20,16,13,.88)),url(corte-degradado.jpg)">Degradado</div><div style="background-image:linear-gradient(transparent 50%,rgba(20,16,13,.88)),url(corte-clasico.jpg)">Clásico</div><div style="background-image:linear-gradient(transparent 50%,rgba(20,16,13,.88)),url(corte-barba.jpg)">Barba perfilada</div></div>
+    </div>
+    <div class="demo-bloque">
+      <h5>Reserva rápida</h5>
+      <div class="demo-opciones" data-grupo="servicio">
+        <button type="button" aria-pressed="false">Corte</button>
+        <button type="button" aria-pressed="false">Corte + barba</button>
+        <button type="button" aria-pressed="false">Barba</button>
+      </div>
+      <div class="demo-opciones" data-grupo="hora" style="margin-top:10px">
+        <button type="button" aria-pressed="false">16:30</button>
+        <button type="button" aria-pressed="false">17:00</button>
+        <button type="button" aria-pressed="false">18:30</button>
+        <button type="button" aria-pressed="false">19:00</button>
+      </div>
+      <button class="demo-accion" type="button" data-confirmar>Reservar cita</button>
+      <p class="demo-aviso" role="status"></p>
+    </div>
+  </div>
+</template>
+
+<!-- Demo 2: veterinaria -->
+<template id="demo-veterinaria">
+  <div class="demo demo-veterinaria" data-tipo="reserva" data-frase="Cita de ejemplo solicitada: {motivo}, {dia} a las {hora}. Te confirmaríamos por SMS." data-falta="Elige motivo, día y hora.">
+    <div class="demo-cabecera">
+      <h4>Clínica Veterinaria Huellas</h4>
+      <p>Cuidamos de tu mascota como si fuera nuestra.</p>
+    </div>
+    <div class="urgencia"><div>Urgencias 24 h<b>600 000 000</b></div><span>Llamar</span></div>
+    <div class="demo-bloque">
+      <h5>Horario</h5>
+      <ul class="demo-lista">
+        <li><span>Lunes a viernes</span><span>9:30–13:30 · 17:00–20:30</span></li>
+        <li><span>Sábados</span><span>10:00–13:30</span></li>
+        <li><span>Domingos</span><span>Solo urgencias</span></li>
+      </ul>
+    </div>
+    <div class="demo-bloque">
+      <h5>Pedir cita previa</h5>
+      <div class="demo-opciones" data-grupo="motivo">
+        <button type="button" aria-pressed="false">Revisión</button>
+        <button type="button" aria-pressed="false">Vacuna</button>
+        <button type="button" aria-pressed="false">Peluquería</button>
+      </div>
+      <div class="demo-opciones" data-grupo="dia" style="margin-top:10px">
+        <button type="button" aria-pressed="false">mañana</button>
+        <button type="button" aria-pressed="false">el jueves</button>
+        <button type="button" aria-pressed="false">el viernes</button>
+      </div>
+      <div class="demo-opciones" data-grupo="hora" style="margin-top:10px">
+        <button type="button" aria-pressed="false">10:00</button>
+        <button type="button" aria-pressed="false">12:30</button>
+        <button type="button" aria-pressed="false">18:00</button>
+      </div>
+      <button class="demo-accion" type="button" data-confirmar>Solicitar cita</button>
+      <p class="demo-aviso" role="status"></p>
+    </div>
+  </div>
+</template>
+
+<!-- Demo 3: bar / comercio -->
+<template id="demo-bar">
+  <div class="demo demo-bar" data-tipo="pedido">
+    <div class="demo-cabecera">
+      <h4>Casa Dátil</h4>
+      <p>Tapas y arroces para llevar. Recogida en 30 minutos.</p>
+    </div>
+    <div class="demo-bloque">
+      <h5>Carta</h5>
+      <ul class="carta">
+        <li data-precio="14" data-nombre="Arroz con costra"><div><b>Arroz con costra</b><small>Ración · 14 €</small></div><div class="cantidad"><button type="button" data-menos aria-label="Quitar arroz con costra">−</button><output>0</output><button type="button" data-mas aria-label="Añadir arroz con costra">+</button></div></li>
+        <li data-precio="6" data-nombre="Croquetas caseras"><div><b>Croquetas caseras</b><small>6 unidades · 6 €</small></div><div class="cantidad"><button type="button" data-menos aria-label="Quitar croquetas">−</button><output>0</output><button type="button" data-mas aria-label="Añadir croquetas">+</button></div></li>
+        <li data-precio="8" data-nombre="Ensaladilla"><div><b>Ensaladilla de la casa</b><small>Ración · 8 €</small></div><div class="cantidad"><button type="button" data-menos aria-label="Quitar ensaladilla">−</button><output>0</output><button type="button" data-mas aria-label="Añadir ensaladilla">+</button></div></li>
+        <li data-precio="5" data-nombre="Tarta de dátiles"><div><b>Tarta de dátiles</b><small>Porción · 5 €</small></div><div class="cantidad"><button type="button" data-menos aria-label="Quitar tarta de dátiles">−</button><output>0</output><button type="button" data-mas aria-label="Añadir tarta de dátiles">+</button></div></li>
+      </ul>
+      <p class="pedido-total"><span>Total</span><span data-total>0 €</span></p>
+      <button class="demo-accion" type="button" data-pedir>Pedir por WhatsApp</button>
+      <p class="demo-aviso" role="status"></p>
+      <p class="mensaje-wa" data-mensaje></p>
+    </div>
+  </div>
+</template>
+
+<script>
+(function () {
+  'use strict';
+
+  // --- Enlaces de WhatsApp con mensaje predefinido ---
+  var TELEFONO = '34611452252';
+  var MENSAJE = 'Hola Miguel, he visto tu web y me gustaría hablar sobre mi negocio.';
+  var enlaceWhatsApp = 'https://wa.me/' + TELEFONO + '?text=' + encodeURIComponent(MENSAJE);
+  document.querySelectorAll('[data-whatsapp]').forEach(function (a) {
+    a.href = enlaceWhatsApp;
+    a.target = '_blank';
+    a.rel = 'noopener';
+  });
+
+  document.getElementById('anio').textContent = new Date().getFullYear();
+
+  // --- Copiar el correo ---
+  var CORREO = 'miguelpina005@gmail.com';
+  var botonCopiar = document.getElementById('copiar-correo');
+  var textoCopiar = document.getElementById('copiar-texto');
+  var estadoCopiar = document.getElementById('copiar-estado');
+  var temporizador;
+
+  function copiaClasica(texto) {
+    var campo = document.createElement('textarea');
+    campo.value = texto;
+    campo.setAttribute('readonly', '');
+    campo.style.position = 'fixed';
+    campo.style.opacity = '0';
+    document.body.appendChild(campo);
+    campo.select();
+    var ok = false;
+    try { ok = document.execCommand('copy'); } catch (e) { ok = false; }
+    document.body.removeChild(campo);
+    return ok;
+  }
+
+  function avisar(ok) {
+    textoCopiar.textContent = ok ? '¡Copiado!' : 'No se pudo copiar';
+    estadoCopiar.textContent = ok ? 'Correo copiado' : 'No se pudo copiar el correo';
+    clearTimeout(temporizador);
+    temporizador = setTimeout(function () {
+      textoCopiar.textContent = 'Copiar mi correo';
+      estadoCopiar.textContent = '';
+    }, 2200);
+  }
+
+  botonCopiar.addEventListener('click', function () {
+    if (navigator.clipboard && window.isSecureContext) {
+      navigator.clipboard.writeText(CORREO).then(
+        function () { avisar(true); },
+        function () { avisar(copiaClasica(CORREO)); }
+      );
+    } else {
+      avisar(copiaClasica(CORREO));
+    }
+  });
+
+  // --- Vista previa de los ejemplos ---
+  var vista = document.getElementById('vista');
+  var pantalla = document.getElementById('vista-pantalla');
+  var tituloVista = document.getElementById('vista-titulo');
+  var origen = null;
+
+  function abrirDemo(boton) {
+    var plantilla = document.getElementById('demo-' + boton.dataset.demo);
+    if (!plantilla) return;
+    origen = boton;
+    pantalla.innerHTML = '';
+    pantalla.appendChild(plantilla.content.cloneNode(true));
+    pantalla.scrollTop = 0;
+    tituloVista.textContent = 'Ejemplo: ' + boton.dataset.titulo;
+    if (typeof vista.showModal === 'function') { vista.showModal(); } else { vista.setAttribute('open', ''); }
+    document.body.style.overflow = 'hidden';
+  }
+
+  function cerrarDemo() {
+    if (typeof vista.close === 'function' && vista.open) { vista.close(); } else { vista.removeAttribute('open'); alCerrar(); }
+  }
+
+  function alCerrar() {
+    document.body.style.overflow = '';
+    pantalla.innerHTML = '';
+    if (origen) { origen.focus(); origen = null; }
+  }
+
+  document.querySelectorAll('[data-demo]').forEach(function (boton) {
+    boton.addEventListener('click', function () { abrirDemo(boton); });
+  });
+  document.getElementById('vista-cerrar').addEventListener('click', cerrarDemo);
+  vista.addEventListener('close', alCerrar);
+  vista.addEventListener('click', function (e) { if (e.target === vista) cerrarDemo(); });
+
+  // --- Interacciones dentro de las demos ---
+  function euros(n) { return n + ' €'; }
+
+  function actualizarPedido(demo) {
+    var total = 0;
+    demo.querySelectorAll('.carta li').forEach(function (li) {
+      total += Number(li.dataset.precio) * Number(li.querySelector('output').textContent);
+    });
+    demo.querySelector('[data-total]').textContent = euros(total);
+    return total;
+  }
+
+  pantalla.addEventListener('click', function (e) {
+    var boton = e.target.closest('button');
+    if (!boton) return;
+    var demo = boton.closest('.demo');
+    if (!demo) return;
+    var aviso = demo.querySelector('.demo-aviso');
+
+    // Elegir una opción de un grupo (servicio, día, hora...)
+    var grupo = boton.closest('[data-grupo]');
+    if (grupo) {
+      grupo.querySelectorAll('button').forEach(function (b) { b.setAttribute('aria-pressed', String(b === boton)); });
+      aviso.textContent = '';
+      return;
+    }
+
+    // Confirmar una reserva o cita
+    if (boton.hasAttribute('data-confirmar')) {
+      var frase = demo.dataset.frase;
+      var completo = true;
+      demo.querySelectorAll('[data-grupo]').forEach(function (g) {
+        var elegido = g.querySelector('[aria-pressed="true"]');
+        if (!elegido) { completo = false; return; }
+        frase = frase.replace('{' + g.dataset.grupo + '}', elegido.textContent);
+      });
+      aviso.textContent = completo ? frase : demo.dataset.falta;
+      aviso.scrollIntoView({ block: 'nearest' });
+      return;
+    }
+
+    // Sumar o restar platos
+    if (boton.hasAttribute('data-mas') || boton.hasAttribute('data-menos')) {
+      var salida = boton.parentElement.querySelector('output');
+      var cantidad = Number(salida.textContent) + (boton.hasAttribute('data-mas') ? 1 : -1);
+      salida.textContent = Math.max(0, Math.min(9, cantidad));
+      actualizarPedido(demo);
+      aviso.textContent = '';
+      demo.querySelector('[data-mensaje]').textContent = '';
+      return;
+    }
+
+    // Preparar el pedido por WhatsApp (simulado)
+    if (boton.hasAttribute('data-pedir')) {
+      var lineas = [];
+      demo.querySelectorAll('.carta li').forEach(function (li) {
+        var n = Number(li.querySelector('output').textContent);
+        if (n > 0) lineas.push('• ' + n + ' × ' + li.dataset.nombre);
+      });
+      var mensaje = demo.querySelector('[data-mensaje]');
+      if (!lineas.length) {
+        aviso.textContent = 'Añade algún plato con el botón +.';
+        mensaje.textContent = '';
+        return;
+      }
+      aviso.textContent = 'Así le llegaría el pedido al negocio:';
+      mensaje.textContent = 'Hola, quiero hacer un pedido para recoger:\n' + lineas.join('\n') + '\nTotal: ' + euros(actualizarPedido(demo));
+      mensaje.scrollIntoView({ block: 'nearest' });
+    }
+  });
+})();
+</script>
+</body>
+</html>
